@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from emc.config import load_config
+from emc.config import CONFIG_FILENAME, load_config
 
 
 class CheckStatus(str, Enum):
@@ -41,12 +41,21 @@ class DoctorCheck:
 
 
 def mask_secret(secret: str | None) -> str:
-    """Mask sensitive string leaving only small prefix and suffix visible."""
+    """Mask sensitive string leaving only small prefix and suffix visible without leaking.
+
+    For short secrets (<14 characters), masks completely with '***' to avoid leaking
+    significant fractions or duplicate characters of the secret.
+    """
     if not secret:
         return "<not set>"
-    if len(secret) <= 8:
+    clean = secret.strip()
+    if not clean:
+        return "<not set>"
+    if len(clean) < 14:
         return "***"
-    return f"{secret[:6]}...{secret[-4:]}"
+    prefix_len = 6 if len(clean) >= 20 else min(6, max(3, len(clean) // 4))
+    suffix_len = 4 if len(clean) >= 20 else min(4, max(2, len(clean) // 5))
+    return f"{clean[:prefix_len]}...{clean[-suffix_len:]}"
 
 
 def check_git_installed() -> DoctorCheck:
@@ -86,6 +95,14 @@ def check_git_installed() -> DoctorCheck:
 
 def check_git_repo(cwd: Path) -> DoctorCheck:
     """Check if current working directory is inside a Git repository."""
+    if not shutil.which("git"):
+        return DoctorCheck(
+            name="Git Repository",
+            status=CheckStatus.WARN,
+            summary="Git executable not found; skipping repository check",
+            details="Diffs can only be ingested from files or stdin.",
+        )
+
     try:
         proc = subprocess.run(
             ["git", "rev-parse", "--is-inside-work-tree"],
@@ -105,11 +122,22 @@ def check_git_repo(cwd: Path) -> DoctorCheck:
                 timeout=5,
                 shell=(sys.platform == "win32"),
             )
-            root_dir = root_proc.stdout.strip()
+            root_dir = root_proc.stdout.strip() if root_proc.returncode == 0 else str(cwd)
+
+            branch_proc = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=5,
+                shell=(sys.platform == "win32"),
+            )
+            branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else "unknown"
+
             return DoctorCheck(
                 name="Git Repository",
                 status=CheckStatus.PASS,
-                summary="Active git repository detected",
+                summary=f"Active git repository (branch: {branch})",
                 details=f"Root: {root_dir}",
             )
         return DoctorCheck(
@@ -155,8 +183,20 @@ def check_anthropic_api_key() -> DoctorCheck:
 def check_model_config(config_model: str) -> DoctorCheck:
     """Check model configuration from environment or config."""
     env_model = os.getenv("EMC_MODEL")
-    active_model = env_model or config_model
-    source = "EMC_MODEL env" if env_model else "default/config"
+    active_model = (env_model.strip() if env_model else "") or (
+        config_model.strip() if config_model else ""
+    )
+    source = "EMC_MODEL env" if (env_model and env_model.strip()) else "default/config"
+    if not active_model:
+        return DoctorCheck(
+            name="EMC Model",
+            status=CheckStatus.FAIL,
+            summary="Model identifier is empty or invalid",
+            details=(
+                "Configure a valid model name in EMC_MODEL env or .emc.toml "
+                "(e.g. claude-3-7-sonnet-latest)."
+            ),
+        )
     return DoctorCheck(
         name="EMC Model",
         status=CheckStatus.PASS,
@@ -167,18 +207,33 @@ def check_model_config(config_model: str) -> DoctorCheck:
 
 def check_emc_config(cwd: Path) -> DoctorCheck:
     """Check whether .emc.toml configuration file is present and valid."""
-    config, path = load_config(cwd / ".emc.toml" if (cwd / ".emc.toml").is_file() else None)
-    if path is not None:
+    target_candidate = cwd / CONFIG_FILENAME if (cwd / CONFIG_FILENAME).is_file() else None
+    result = load_config(config_path=target_candidate, start_dir=cwd)
+
+    if result.error:
+        file_name = result.path.name if result.path else CONFIG_FILENAME
+        return DoctorCheck(
+            name="EMC Configuration",
+            status=CheckStatus.FAIL,
+            summary=f"Invalid configuration in {file_name}",
+            details=result.error,
+        )
+
+    if result.path is not None:
         return DoctorCheck(
             name="EMC Configuration",
             status=CheckStatus.PASS,
-            summary=f"Loaded from {path.name} (mode: {config.mode})",
-            details=f"Path: {path}",
+            summary=f"Loaded from {result.path.name} (mode: {result.config.mode})",
+            details=f"Path: {result.path}",
         )
+
     return DoctorCheck(
         name="EMC Configuration",
         status=CheckStatus.PASS,
-        summary=f"Using defaults (mode: {config.mode}, skip_allowed: {config.skip_allowed})",
+        summary=(
+            f"Using defaults (mode: {result.config.mode}, "
+            f"skip_allowed: {result.config.skip_allowed})"
+        ),
         details="No .emc.toml found; run 'emc init' or create .emc.toml to customize.",
     )
 
@@ -206,25 +261,41 @@ def check_cache_and_ledger(cwd: Path) -> DoctorCheck:
     """Check .emc directory permissions and state."""
     emc_dir = cwd / ".emc"
     if emc_dir.exists():
-        if emc_dir.is_dir():
-            ledger = emc_dir / "ledger.jsonl"
-            ledger_info = (
-                f"ledger exists ({ledger.stat().st_size} bytes)"
-                if ledger.exists()
-                else "ledger not initialized"
-            )
+        if not emc_dir.is_dir():
             return DoctorCheck(
                 name="EMC Local State",
-                status=CheckStatus.PASS,
-                summary=f"Found .emc/ directory ({ledger_info})",
+                status=CheckStatus.WARN,
+                summary=".emc exists but is not a directory",
                 details=str(emc_dir),
             )
+        if not os.access(emc_dir, os.W_OK):
+            return DoctorCheck(
+                name="EMC Local State",
+                status=CheckStatus.FAIL,
+                summary=".emc directory is not writable",
+                details=f"Check filesystem permissions for {emc_dir}",
+            )
+        ledger = emc_dir / "ledger.jsonl"
+        ledger_info = (
+            f"ledger exists ({ledger.stat().st_size} bytes)"
+            if ledger.exists()
+            else "ledger not initialized"
+        )
+        return DoctorCheck(
+            name="EMC Local State",
+            status=CheckStatus.PASS,
+            summary=f"Found .emc/ directory ({ledger_info})",
+            details=str(emc_dir),
+        )
+
+    if not os.access(cwd, os.W_OK):
         return DoctorCheck(
             name="EMC Local State",
             status=CheckStatus.WARN,
-            summary=".emc exists but is not a directory",
-            details=str(emc_dir),
+            summary=f"Directory '{cwd}' is not writable",
+            details="Unable to create .emc/ directory lazily.",
         )
+
     return DoctorCheck(
         name="EMC Local State",
         status=CheckStatus.PASS,
@@ -236,14 +307,14 @@ def check_cache_and_ledger(cwd: Path) -> DoctorCheck:
 def run_doctor_checks(cwd: Path | None = None) -> list[DoctorCheck]:
     """Execute all system and environment diagnostic checks."""
     base_dir = cwd or Path.cwd()
-    config, _ = load_config()
+    result = load_config(start_dir=base_dir)
 
     return [
         check_python_runtime(),
         check_git_installed(),
         check_git_repo(base_dir),
         check_anthropic_api_key(),
-        check_model_config(config.model),
+        check_model_config(result.config.model),
         check_emc_config(base_dir),
         check_cache_and_ledger(base_dir),
     ]

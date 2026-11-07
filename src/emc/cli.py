@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -16,7 +19,7 @@ from emc.doctor import render_doctor_report, run_doctor_checks
 app = typer.Typer(
     name="emc",
     help=(
-        "explain-my-own-code (emc) — "
+        "explain-my-own-code (emc) -- "
         "Verifies whether a developer actually understands their code diff."
     ),
     no_args_is_help=True,
@@ -37,6 +40,23 @@ def version_callback(value: bool) -> None:
     if value:
         console.print(f"[bold cyan]emc[/bold cyan] version [bold green]{__version__}[/bold green]")
         raise typer.Exit()
+
+
+def _get_git_hooks_dir() -> Path | None:
+    """Resolve git hooks directory using git rev-parse or fallback to .git/hooks."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--git-path", "hooks"],
+            capture_output=True,
+            text=True,
+            check=True,
+            shell=(sys.platform == "win32"),
+        )
+        resolved = Path(proc.stdout.strip())
+        return resolved if resolved.is_absolute() else Path.cwd() / resolved
+    except Exception:
+        fallback = Path.cwd() / ".git" / "hooks"
+        return fallback if fallback.parent.is_dir() else None
 
 
 @app.callback()
@@ -83,7 +103,15 @@ def doctor_cmd(
 @app.command(name="config")
 def config_cmd() -> None:
     """Display active configuration settings and resolved file location."""
-    config, path = load_config()
+    result = load_config()
+    config = result.config
+    path = result.path
+
+    if result.error:
+        console.print(
+            f"[bold red]Configuration Warning:[/bold red] {result.error} (using fallback defaults)"
+        )
+
     console.print(f"[bold cyan]Configuration File:[/bold cyan] {path or '<defaults>'}")
     console.print(f"[bold cyan]Mode:[/bold cyan] {config.mode}")
     console.print(f"[bold cyan]Model:[/bold cyan] {config.model}")
@@ -121,20 +149,126 @@ def init_cmd(
         "commit_trailer = true\n"
     )
     target.write_text(default_content, encoding="utf-8")
+
+    # Lazily ensure .emc directory exists
+    emc_dir = Path(".emc")
+    emc_dir.mkdir(exist_ok=True)
+
     console.print(f"[bold green]Successfully initialized {target.resolve()}[/bold green]")
 
 
+@app.command(name="quiz")
+def quiz_cmd(
+    staged: Annotated[bool, typer.Option("--staged", help="Analyze staged git changes.")] = False,
+    commit: Annotated[
+        Optional[str],
+        typer.Option("--commit", help="Analyze specific commit or range (e.g. HEAD~1)."),
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Redact secrets and display without network call.")
+    ] = False,
+    skip: Annotated[
+        bool, typer.Option("--skip", help="Skip comprehension quiz (logged to ledger).")
+    ] = False,
+) -> None:
+    """Start an interactive comprehension quiz on a diff."""
+    if skip:
+        console.print("[dim]Comprehension quiz skipped by developer (--skip).[/dim]")
+        raise typer.Exit(code=0)
+
+    # Safe CI / non-TTY detection: never hang, exit 0 with notice
+    is_ci = os.getenv("CI", "").lower() in ("true", "1")
+    if not sys.stdin.isatty() or is_ci:
+        console.print(
+            "[dim]Non-interactive terminal or CI environment detected. "
+            "Skipping comprehension quiz.[/dim]"
+        )
+        raise typer.Exit(code=0)
+
+    console.print(
+        "[yellow]Interactive quiz pipeline is scheduled for Stage 4 (Session + Grading). "
+        "Run 'emc doctor' to verify system readiness.[/yellow]"
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command(name="explain")
+def explain_cmd(
+    staged: Annotated[bool, typer.Option("--staged", help="Explain staged git changes.")] = False,
+    commit: Annotated[
+        Optional[str],
+        typer.Option("--commit", help="Explain specific commit or range."),
+    ] = None,
+) -> None:
+    """Walkthrough and explain code diff without interactive quiz."""
+    console.print(
+        "[yellow]Diff walkthrough explanation is scheduled for Stage 4. "
+        "Run 'emc doctor' to verify system readiness.[/yellow]"
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command(name="report")
+def report_cmd() -> None:
+    """Display comprehension mastery report across concept Leitner boxes."""
+    console.print(
+        "[yellow]Mastery reporting is scheduled for Stage 5 (Ledger + Mastery). "
+        "Run 'emc doctor' to check local state.[/yellow]"
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command(name="review")
+def review_cmd() -> None:
+    """Replay questions targeting previously missed or weak concepts."""
+    console.print(
+        "[yellow]Concept review session is scheduled for Stage 5 (Ledger + Mastery). "
+        "Run 'emc doctor' to check local state.[/yellow]"
+    )
+    raise typer.Exit(code=0)
+
+
+@app.command(name="eval")
+def eval_cmd(
+    baseline: Annotated[
+        bool,
+        typer.Option("--baseline", help="Run ablation against naive single-prompt baseline."),
+    ] = False,
+) -> None:
+    """Run benchmark evaluation suite across seeded bug diffs."""
+    console.print(
+        "[yellow]Evaluation suite is scheduled for Stage 7 (Eval). "
+        "Run 'emc doctor' to verify test readiness.[/yellow]"
+    )
+    raise typer.Exit(code=0)
+
+
 @hook_app.command(name="install")
-def hook_install() -> None:
+def hook_install(
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Overwrite existing pre-commit hook")
+    ] = False,
+) -> None:
     """Install emc git pre-commit hook into current repository."""
-    git_dir = Path(".git")
-    if not git_dir.is_dir():
+    hooks_dir = _get_git_hooks_dir()
+    if not hooks_dir or not hooks_dir.parent.exists():
         console.print("[bold red]Not inside a git repository root.[/bold red]")
         raise typer.Exit(code=1)
 
-    hooks_dir = git_dir / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
     pre_commit_file = hooks_dir / "pre-commit"
+
+    if pre_commit_file.exists():
+        content = pre_commit_file.read_text(encoding="utf-8")
+        if "emc quiz" in content:
+            console.print("[bold green]emc pre-commit hook is already installed.[/bold green]")
+            return
+        if not force:
+            console.print(
+                "[yellow]A pre-commit hook already exists. "
+                "Use --force to overwrite, or append 'emc quiz --staged' manually.[/yellow]"
+            )
+            raise typer.Exit(code=1)
 
     script = "#!/usr/bin/env sh\n# explain-my-own-code pre-commit hook\nemc quiz --staged\n"
     pre_commit_file.write_text(script, encoding="utf-8")
@@ -142,18 +276,36 @@ def hook_install() -> None:
         pre_commit_file.chmod(0o755)
     except Exception:
         pass
-    console.print("[bold green]Installed emc pre-commit hook to .git/hooks/pre-commit[/bold green]")
+    console.print(f"[bold green]Installed emc pre-commit hook to {pre_commit_file}[/bold green]")
 
 
 @hook_app.command(name="uninstall")
-def hook_uninstall() -> None:
+def hook_uninstall(
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f", help="Remove hook even if it does not contain emc identifier"
+        ),
+    ] = False,
+) -> None:
     """Uninstall emc git pre-commit hook."""
-    pre_commit_file = Path(".git/hooks/pre-commit")
-    if pre_commit_file.exists():
-        pre_commit_file.unlink()
-        console.print("[bold green]Removed .git/hooks/pre-commit[/bold green]")
-    else:
-        console.print("[yellow]No hook found at .git/hooks/pre-commit[/yellow]")
+    hooks_dir = _get_git_hooks_dir()
+    pre_commit_file = (hooks_dir / "pre-commit") if hooks_dir else Path(".git/hooks/pre-commit")
+
+    if not pre_commit_file.exists():
+        console.print(f"[yellow]No hook found at {pre_commit_file}[/yellow]")
+        return
+
+    content = pre_commit_file.read_text(encoding="utf-8")
+    if "emc" not in content and not force:
+        console.print(
+            "[yellow]Existing pre-commit hook does not appear to belong to emc. "
+            "Use --force to remove anyway.[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    pre_commit_file.unlink()
+    console.print(f"[bold green]Removed {pre_commit_file}[/bold green]")
 
 
 if __name__ == "__main__":

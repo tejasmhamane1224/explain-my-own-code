@@ -1,12 +1,12 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 0: Plan + Scaffold** — **COMPLETED**
+**Stage 0: Plan + Scaffold** -- **COMPLETED & HARDENED**
 
 ---
 
 ## Stage Progress Checklist
-- [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton, `emc doctor` diagnostics, unit tests.
+- [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton (`init`, `quiz`, `explain`, `report`, `review`, `eval`, `doctor`, `config`, `hook`), hardened `emc doctor` diagnostics with corrupted config detection & safe key masking, comprehensive unit tests (24 passed).
 - [ ] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged, commit range, stdin), hunk segmentation, secret redaction (Base58, hex, seed phrases, envs), `--dry-run`, prompt injection fixtures.
 - [ ] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump), TS wallet rules (lamports/decimals, base units, RPCs), generic rules, hunk ranking.
 - [ ] **Stage 3: LLM Layer + Generation + Validator**: Provider abstraction (Anthropic, Fake, Local), disk cache, question schemas, 4-step quality validator.
@@ -28,13 +28,14 @@
    - `DECISIONS.md`: ADRs for CLI choice, deterministic detectors, quality gate, injection defense, redaction, doctor architecture.
    - `STATUS.md`: Real-time stage tracking and verification records.
 4. **CLI & Diagnostics**:
-   - `emc --help`: Full Typer command tree with rich formatting.
-   - `emc doctor`: Multi-point environment diagnostic suite checking Python runtime (>=3.12), git installation, repository context, Anthropic API key masking, model resolution, `.emc.toml` configuration, and `.emc/` state. Supports `--verbose` and `--json`.
-   - `emc config`: Active configuration inspection.
-   - `emc init`: Default `.emc.toml` initialization.
-   - `emc hook`: Git hook installation and removal commands.
+   - `emc --help`: Full Typer command tree with rich formatting for all specification commands (`init`, `quiz`, `explain`, `report`, `review`, `hook`, `eval`, `doctor`, `config`).
+   - `emc doctor`: Multi-point environment diagnostic suite checking Python runtime (>=3.12), git installation, repository context with branch resolution, Anthropic API key leak-proof masking, model resolution, `.emc.toml` syntax and schema validation, and `.emc/` state with filesystem writability checks. Supports `--verbose` and `--json`.
+   - `emc config`: Active configuration inspection with corrupted-file warnings.
+   - `emc init`: Default `.emc.toml` and `.emc/` directory initialization.
+   - `emc hook`: Git hook installation and removal commands supporting git worktrees and protecting foreign hooks.
+   - `emc quiz`: Safe `--skip` flag and non-interactive / CI environment safe bypass (never hangs, exits 0).
 5. **CI Automation**: `.github/workflows/ci.yml` verifying linting (`ruff`), typing (`mypy`), testing (`pytest`), and CLI smoke runs on Ubuntu + Python 3.12.
-6. **Test Suite**: Comprehensive unit tests in `tests/test_cli.py` and `tests/test_doctor.py`.
+6. **Test Suite**: 24 comprehensive unit tests in `tests/test_cli.py` and `tests/test_doctor.py`.
 
 ---
 
@@ -53,7 +54,7 @@ ruff check .
 ruff format --check .
 
 # 4. Check static types
-mypy src
+mypy src tests
 
 # 5. Test CLI commands
 emc --help
