@@ -22,15 +22,19 @@ RE_NAIVE_ADDR_LEN = re.compile(
 
 # Lamport and decimal math patterns
 RE_MIX_SOL_LAMPORTS = re.compile(
-    r"\b(?:lamports|balance|balanceLamports)\s*(\+|-)\s*"
-    r"(?:\d+(?:\.\d+)?|\b(?:sol|solAmount)\b)(?!\s*\*\s*LAMPORTS_PER_SOL)"
+    r"(?:\b(?:lamports|balance|balanceLamports)\s*[\+\-]\s*(?:\d+(?:\.\d+)?|\b(?:sol|solAmount)\b)(?!\s*\*\s*LAMPORTS_PER_SOL)|"
+    r"\b(?:sol|solAmount)\s*[\+\-]\s*(?:\d+(?:\.\d+)?|\b(?:lamports|balance|balanceLamports)\b))"
 )
 RE_FLOAT_MATH_BALANCE = re.compile(
-    r"\b(?:lamports|balance|totalBalance|tokenBalance)\s*(\*|/)\s*(?:0\.\d+|1e\d+|\d+\.\d+)"
+    r"(?:\b(?:lamports|balance|totalBalance|tokenBalance)\s*[\*\/]\s*(?:0\.\d+|1e\d+|\d+\.\d+)|"
+    r"(?:0\.\d+|\d+\.\d+)\s*[\*\/]\s*\b(?:lamports|balance|totalBalance|tokenBalance)\b)"
 )
 RE_WRONG_SOL_FACTOR = re.compile(r"\b(?:sol|solAmount)\s*\*\s*(?:1000|100000|1000000)\b")
 
 # Base units vs human units
+RE_TRANSFER_CALL_START = re.compile(
+    r"\b(?:createTransferInstruction|transferChecked|createMintToInstruction|mintTo)\s*\("
+)
 RE_UNSCALED_TRANSFER = re.compile(
     r"\b(?:createTransferInstruction|transferChecked|createMintToInstruction|mintTo)\s*\("
     r"[^)]*?,\s*(\d+(?:\.\d+)?|\b(?:amount|uiAmount)\b)\s*(?:,|\))"
@@ -40,7 +44,7 @@ RE_HARDCODED_DECIMALS_SCALE = re.compile(r"\b(?:amount|uiAmount)\s*\*\s*(?:100|1
 
 def _is_ts_file(path: str) -> bool:
     """Check if file is TypeScript or JavaScript."""
-    clean = path.lower()
+    clean = path.replace("\\", "/").lower()
     return clean.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"))
 
 
@@ -69,12 +73,17 @@ def _detect_hunk_ts_risks(file_path: str, hunk_idx: int, hunk: DiffHunk) -> list
         line_num = line.new_line_number
         stripped = raw_line.strip()
 
-        # Skip comment lines
+        # Skip full comment lines
         if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
             continue
 
-        # 1. Hardcoded RPC URLs
-        rpc_match = RE_HARDCODED_RPC.search(raw_line)
+        # Strip inline comment without stripping https:// or http:// in URLs
+        code_only = re.sub(r"(?<!:)\/\/.*$", "", raw_line).strip()
+        if not code_only:
+            continue
+
+        # 1. Hardcoded RPC URLs (evaluated on code portion only)
+        rpc_match = RE_HARDCODED_RPC.search(code_only)
         if rpc_match:
             findings.append(
                 DetectionFinding(
@@ -98,13 +107,15 @@ def _detect_hunk_ts_risks(file_path: str, hunk_idx: int, hunk: DiffHunk) -> list
             )
 
         # 2. Lamport & Decimal Scaling Precision
-        has_mix = bool(RE_MIX_SOL_LAMPORTS.search(raw_line))
-        has_float = bool(RE_FLOAT_MATH_BALANCE.search(raw_line))
-        has_wrong_factor = bool(RE_WRONG_SOL_FACTOR.search(raw_line))
+        has_mix = bool(RE_MIX_SOL_LAMPORTS.search(code_only))
+        has_float = bool(RE_FLOAT_MATH_BALANCE.search(code_only))
+        has_wrong_factor = bool(RE_WRONG_SOL_FACTOR.search(code_only))
 
-        # Ignore if BN or BigInt is properly wrapping the expression
         has_safe_bn = (
-            "new BN" in raw_line or "BigInt(" in raw_line or "LAMPORTS_PER_SOL" in raw_line
+            "new BN" in code_only
+            or "BigInt(" in code_only
+            or "LAMPORTS_PER_SOL" in code_only
+            or "Decimal" in code_only
         )
         if (has_mix or has_float or has_wrong_factor) and not has_safe_bn:
             findings.append(
@@ -129,16 +140,34 @@ def _detect_hunk_ts_risks(file_path: str, hunk_idx: int, hunk: DiffHunk) -> list
             )
 
         # 3. Base Units vs Human Units in Instructions
-        has_unscaled = bool(RE_UNSCALED_TRANSFER.search(raw_line))
-        has_hardcoded_scale = bool(RE_HARDCODED_DECIMALS_SCALE.search(raw_line))
+        has_unscaled = False
+        has_hardcoded_scale = bool(RE_HARDCODED_DECIMALS_SCALE.search(code_only))
+
+        if RE_TRANSFER_CALL_START.search(code_only):
+            # Gather multiline instruction call text
+            call_text = code_only
+            fwd = i + 1
+            while fwd < len(all_lines) and fwd <= i + 10:
+                nxt = re.sub(r"(?<!:)\/\/.*$", "", all_lines[fwd].content).strip()
+                call_text += " " + nxt
+                if ");" in nxt or ")" in nxt:
+                    break
+                fwd += 1
+
+            if RE_UNSCALED_TRANSFER.search(call_text) or re.search(
+                r",\s*(?:\d+(?:\.\d+)?|\b(?:amount|uiAmount)\b)\s*(?:,|\))", call_text
+            ):
+                has_unscaled = True
+        elif RE_UNSCALED_TRANSFER.search(code_only):
+            has_unscaled = True
 
         has_proper_scale = (
-            "decimals" in raw_line
-            or "parseUnits" in raw_line
-            or "10 **" in raw_line
-            or "Math.pow" in raw_line
-            or "uiAmountToAmount" in raw_line
-            or "BigInt(" in raw_line
+            "decimals" in code_only
+            or "parseUnits" in code_only
+            or "10 **" in code_only
+            or "Math.pow" in code_only
+            or "uiAmountToAmount" in code_only
+            or "BigInt(" in code_only
         )
 
         if (has_unscaled or has_hardcoded_scale) and not has_proper_scale:
@@ -166,7 +195,7 @@ def _detect_hunk_ts_risks(file_path: str, hunk_idx: int, hunk: DiffHunk) -> list
 
         # 4. Address Validation
         # Check naive string length check
-        if RE_NAIVE_ADDR_LEN.search(raw_line):
+        if RE_NAIVE_ADDR_LEN.search(code_only):
             findings.append(
                 DetectionFinding(
                     rule_id="ts.address_validation",
@@ -189,14 +218,19 @@ def _detect_hunk_ts_risks(file_path: str, hunk_idx: int, hunk: DiffHunk) -> list
             )
 
         # Check new PublicKey(arg) without try/catch
-        pk_match = RE_NEW_PUBLICKEY.search(raw_line)
+        pk_match = RE_NEW_PUBLICKEY.search(code_only)
         if pk_match:
             arg = pk_match.group(1).strip()
-            # If it's a known constant or string literal, don't flag
-            is_const = arg.startswith('"') or arg.startswith("'") or arg == ""
+            # Skip string literal constants (single, double, or un-interpolated template quotes)
+            is_const = (
+                arg.startswith('"')
+                or arg.startswith("'")
+                or (arg.startswith("`") and "${" not in arg)
+                or arg == ""
+            )
             if not is_const:
-                lookback = max(0, i - 4)
-                surrounding_lines = all_lines[lookback : min(len(all_lines), i + 5)]
+                lookback = max(0, i - 15)
+                surrounding_lines = all_lines[lookback : min(len(all_lines), i + 15)]
                 surrounding_text = " ".join(item.content for item in surrounding_lines)
                 has_try_catch = (
                     "try {" in surrounding_text

@@ -87,3 +87,13 @@
 - **Decision**: Score and rank each diff hunk using a multi-factor risk formula:
   `Risk Score = (Finding Severity Weights + (Additions * 0.1 + Deletions * 0.03)) * File Multiplier`
   Where findings carry severity weights (CRITICAL: 10.0, HIGH: 5.0, MEDIUM: 2.5, LOW: 1.0), additions carry 3.3x more risk weight than deletions, and file importance applies domain multipliers (Smart Contracts: 1.8x, Wallet/Auth: 1.5x, Standard Code: 1.0x, Tests/Docs: 0.3x). Question planning prioritizes the highest-ranked hunks.
+
+## ADR-012: Multiline Attribute Balancing, Bidirectional Matching, and OS Path Normalization
+- **Status**: Accepted
+- **Context**: Real-world Rust/Anchor and TypeScript code heavily utilizes multiline formatting (e.g. rustfmt multi-line `#[account(...)]` attributes, multiline instruction calls, and method calls like `user.key().as_ref()` in seed slices). Naive single-line regex matching yields false positives on valid code and false negatives on multi-line statements.
+- **Decision**:
+  1. Attribute Balance Tracking: Parse multi-line Anchor `#[account(...)]` blocks using parenthesis balance counters, guaranteeing that inner method calls (e.g. `.as_ref()`) do not prematurely terminate attribute blocks.
+  2. Protocol-Safe Comment Stripping: Strip inline comments using negative lookbehinds (`(?<!:)//`) to preserve `https://` URLs in hardcoded RPC detectors.
+  3. Bidirectional Precision Matching: Check arithmetic operators bidirectionally (`float * balance` and `balance * float`, `sol + balance` and `balance + sol`).
+  4. Path Normalization: Normalize Windows backslashes (`\`) to forward slashes (`/`) before regex evaluation and dictionary key lookups in hunk ranking.
+

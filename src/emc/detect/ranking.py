@@ -18,11 +18,12 @@ RE_TEST_OR_DOC = re.compile(r"(tests?/|fixtures/|docs?/|\.md$|\.ya?ml$|__tests__
 
 def compute_file_multiplier(file_path: str) -> float:
     """Compute file importance risk multiplier based on path conventions."""
-    if RE_TEST_OR_DOC.search(file_path):
+    clean = file_path.replace("\\", "/").lower()
+    if RE_TEST_OR_DOC.search(clean):
         return 0.3
-    if RE_SMART_CONTRACT.search(file_path):
+    if RE_SMART_CONTRACT.search(clean):
         return 1.8
-    if RE_WALLET_AUTH.search(file_path):
+    if RE_WALLET_AUTH.search(clean):
         return 1.5
     return 1.0
 
@@ -34,18 +35,20 @@ def rank_hunks(
     """Rank all diff hunks by calculated risk score in descending order."""
     ranked: list[RankedHunk] = []
 
-    # Map findings by (file_path, hunk_index)
+    # Map findings by (normalized_file_path, hunk_index)
     finding_map: dict[tuple[str, int], list[DetectionFinding]] = {}
     for f in findings:
-        key = (f.file_path, f.hunk_index if f.hunk_index is not None else 0)
+        norm_fpath = f.file_path.replace("\\", "/")
+        key = (norm_fpath, f.hunk_index if f.hunk_index is not None else 0)
         finding_map.setdefault(key, []).append(f)
 
     for file_diff in ingest_result.files:
         path = file_diff.path
+        norm_path = path.replace("\\", "/")
         multiplier = compute_file_multiplier(path)
 
         for hunk_idx, hunk in enumerate(file_diff.hunks):
-            hunk_findings = finding_map.get((path, hunk_idx), [])
+            hunk_findings = finding_map.get((norm_path, hunk_idx), [])
 
             # Severity score sum
             findings_score = sum(f.severity.weight for f in hunk_findings)

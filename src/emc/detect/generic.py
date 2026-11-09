@@ -31,27 +31,30 @@ RE_BYPASS_FLAGS = [
         "Security checks explicitly disabled",
     ),
     (
-        re.compile(r"//\s*@ts-(?:ignore|nocheck)\b"),
+        re.compile(r"(?://|/\*)\s*@ts-(?:ignore|nocheck)\b"),
         "TypeScript type safety explicitly ignored (@ts-ignore / @ts-nocheck)",
     ),
-    (re.compile(r"#\s*type:\s*ignore\[.*\]"), "Python type checker suppression"),
+    (re.compile(r"#\s*type:\s*ignore(?:\s*\[.*\])?\b"), "Python type checker suppression"),
 ]
 
-# Sensitive logging patterns
+# Sensitive logging patterns (supports snake_case and camelCase)
 RE_SENSITIVE_LOG = re.compile(
     r"\b(?:console\.(?:log|debug|info|warn|error)|logger\.(?:debug|info|warn|error)|"
     r"logging\.(?:debug|info|warn|error)|print|println!|eprintln!)\s*\([^)]*?\b"
-    r"(private_key|secret_key|secret|password|passwd|auth_token|api_key|mnemonic|"
-    r"seed_phrase|access_token|refresh_token)\b[^)]*?\)",
+    r"(private_?key|secret_?key|api_?key|auth_?token|access_?token|refresh_?token|"
+    r"seed_?phrase|key_?pair|secret|password|passwd|mnemonic)\b[^)]*?\)",
     re.IGNORECASE,
 )
 
 # Hardcoded secret fallbacks
+# (supports Node process.env dot/bracket notation, Python os.getenv/environ, Rust env::var)
 RE_HARDCODED_FALLBACK = re.compile(
-    r"""(?:process\.env\.(?:[A-Z0-9_]*(?:SECRET|KEY|PASSWORD|TOKEN|AUTH)[A-Z0-9_]*)\s*"""
-    r"""(?:\|\||\?\?)\s*["'][^"']+["']|os\.(?:environ\.get|getenv)\s*\(\s*["']"""
-    r"""[A-Z0-9_]*(?:SECRET|KEY|PASSWORD|TOKEN|AUTH)[A-Z0-9_]*["']\s*,\s*["'][^"']+["']\s*\)|"""
-    r"""os\.(?:environ\.get|getenv)\s*\([^)]+\)\s+or\s+["'][^"']+["'])"""
+    r"""(?:process\.env(?:\.[a-zA-Z0-9_]*(?:secret|key|password|token|auth)[a-zA-Z0-9_]*|"""
+    r"""\[["'][^"']*(?:secret|key|password|token|auth)[^"']*["']\])\s*(?:\|\||\?\?)\s*["'][^"']+["']|"""
+    r"""os\.(?:environ\.get|getenv)\s*\(\s*["'][^"']*(?:secret|key|password|token|auth)[^"']*["']\s*,\s*["'][^"']+["']\s*\)|"""
+    r"""os\.(?:environ\.get|getenv)\s*\([^)]+\)\s+or\s+["'][^"']+["']|"""
+    r"""(?:std::)?env::var\s*\(\s*["'][^"']*(?:secret|key|password|token|auth)[^"']*["']\s*\)\.unwrap_or(?:_else)?\s*\(\s*(?:["'][^"']+["']|["'][^"']+["']\.to_string\(\))\s*\))""",
+    re.IGNORECASE,
 )
 
 # Empty catch / except patterns
@@ -111,7 +114,17 @@ def _detect_hunk_generic_risks(
                 break
 
         # 2. Sensitive Variable Logging
-        log_match = RE_SENSITIVE_LOG.search(raw_line)
+        log_text = raw_line
+        if re.search(
+            r"\b(?:console\.(?:log|debug|info|warn|error)|logger\.|logging\.|println!|eprintln!)\s*\(",
+            raw_line,
+        ):
+            fwd = i + 1
+            while fwd < len(all_lines) and fwd <= i + 6 and ")" not in log_text:
+                log_text += " " + all_lines[fwd].content
+                fwd += 1
+
+        log_match = RE_SENSITIVE_LOG.search(log_text)
         if log_match:
             var_name = log_match.group(1)
             findings.append(
@@ -164,13 +177,27 @@ def _detect_hunk_generic_risks(
 
         # Check multi-line empty catch: catch (...) {\n}
         if stripped.startswith("catch") and "{" in stripped and "}" not in stripped:
-            if i + 1 < len(all_lines) and all_lines[i + 1].content.strip() == "}":
-                is_empty_catch = True
+            fwd = i + 1
+            while fwd < len(all_lines) and fwd <= i + 4:
+                nxt = all_lines[fwd].content.strip()
+                if not nxt or nxt.startswith("//") or nxt.startswith("/*"):
+                    fwd += 1
+                    continue
+                if nxt == "}":
+                    is_empty_catch = True
+                break
 
         # Check multi-line empty except: except Exception:\n pass
         if stripped.startswith("except") and stripped.endswith(":"):
-            if i + 1 < len(all_lines) and all_lines[i + 1].content.strip() == "pass":
-                is_empty_except = True
+            fwd = i + 1
+            while fwd < len(all_lines) and fwd <= i + 4:
+                nxt = all_lines[fwd].content.strip()
+                if not nxt or nxt.startswith("#"):
+                    fwd += 1
+                    continue
+                if nxt == "pass" or nxt == "...":
+                    is_empty_except = True
+                break
 
         if is_empty_catch or is_empty_except:
             findings.append(

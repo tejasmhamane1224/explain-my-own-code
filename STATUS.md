@@ -8,7 +8,7 @@
 ## Stage Progress Checklist
 - [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton (`init`, `quiz`, `explain`, `report`, `review`, `eval`, `doctor`, `config`, `hook`), hardened `emc doctor` diagnostics with corrupted config detection & safe key masking, comprehensive unit tests (24 passed).
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
-- [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate (100 passed tests).
+- [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
 - [ ] **Stage 3: LLM Layer + Generation + Validator**: Provider abstraction (Anthropic, Fake, Local), disk cache, question schemas, 4-step quality validator.
 - [ ] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), hint ladder, deterministic matchers, LLM rubric judge for free text.
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
@@ -57,7 +57,7 @@
    - `emc detect`: Analyzes diffs from staged, commit range, or stdin, outputting summary, risk findings, and ranked hunks in Rich tables or machine-readable `--json`.
    - `emc quiz --dry-run`: Integrated detector pipeline and ranked hunks into dry-run summary display.
 6. **Test Suite**:
-   - 100 passing unit tests across `tests/test_detectors.py`, `tests/test_ranking.py`, `tests/test_taxonomy.py`, `tests/test_cli_detect.py`, `tests/test_cli_dry_run.py`, `tests/test_ingest.py`, `tests/test_redact.py`, `tests/test_injection.py`, `tests/test_doctor.py`, and `tests/test_cli.py`.
+   - 116 passing unit and matrix tests across `tests/test_detectors.py`, `tests/test_edge_cases.py`, `tests/test_ranking.py`, `tests/test_taxonomy.py`, `tests/test_cli_detect.py`, `tests/test_cli_dry_run.py`, `tests/test_ingest.py`, `tests/test_redact.py`, `tests/test_injection.py`, `tests/test_doctor.py`, and `tests/test_cli.py`.
 
 ---
 
@@ -65,7 +65,7 @@
 To verify Stage 2 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit test suite (100 passing tests)
+# 1. Run complete unit test suite (116 passing tests)
 pytest
 
 # 2. Check code formatting and linting
