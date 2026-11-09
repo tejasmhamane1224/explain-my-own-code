@@ -11,10 +11,14 @@ from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from emc import __version__
 from emc.config import load_config
 from emc.doctor import render_doctor_report, run_doctor_checks
+from emc.ingest import GitError, ingest_diff
+from emc.redact import Redactor
 
 app = typer.Typer(
     name="emc",
@@ -164,6 +168,7 @@ def quiz_cmd(
         Optional[str],
         typer.Option("--commit", help="Analyze specific commit or range (e.g. HEAD~1)."),
     ] = None,
+    stdin: Annotated[bool, typer.Option("--stdin", help="Read diff from standard input.")] = False,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Redact secrets and display without network call.")
     ] = False,
@@ -174,6 +179,79 @@ def quiz_cmd(
     """Start an interactive comprehension quiz on a diff."""
     if skip:
         console.print("[dim]Comprehension quiz skipped by developer (--skip).[/dim]")
+        raise typer.Exit(code=0)
+
+    if dry_run:
+        try:
+            ingest_result = ingest_diff(staged=staged, commit=commit, use_stdin=stdin)
+        except GitError as exc:
+            console.print(f"[bold red]Git Error:[/bold red] {exc}")
+            raise typer.Exit(code=1)
+
+        if ingest_result.is_empty and not ingest_result.raw_diff.strip():
+            console.print("[yellow]No diff changes found to analyze.[/yellow]")
+            raise typer.Exit(code=0)
+
+        redactor = Redactor()
+        redacted_ingest, findings = redactor.redact_ingest_result(ingest_result)
+
+        summary_table = Table(title="Diff Ingestion & Redaction Summary", show_header=True)
+        summary_table.add_column("Property", style="cyan")
+        summary_table.add_column("Value", style="green")
+
+        summary_table.add_row("Source", ingest_result.source)
+        summary_table.add_row("Files Analyzed", str(ingest_result.total_files))
+        summary_table.add_row("Total Hunks", str(ingest_result.total_hunks))
+        summary_table.add_row(
+            "Additions / Deletions",
+            f"+{ingest_result.total_additions} / -{ingest_result.total_deletions}",
+        )
+        summary_table.add_row("Ignored Files", str(len(ingest_result.ignored_files)))
+        summary_table.add_row(
+            "Truncated",
+            (
+                f"[bold yellow]Yes ({ingest_result.truncation_reason})[/bold yellow]"
+                if ingest_result.truncated
+                else "No"
+            ),
+        )
+        summary_table.add_row(
+            "Secrets Redacted",
+            f"[bold red]{len(findings)}[/bold red]" if findings else "0",
+        )
+
+        console.print(summary_table)
+
+        if ingest_result.ignored_files:
+            console.print(f"[dim]Ignored files: {', '.join(ingest_result.ignored_files)}[/dim]")
+
+        if findings:
+            secrets_table = Table(title="Detected & Redacted Secrets", show_header=True)
+            secrets_table.add_column("Category", style="magenta")
+            secrets_table.add_column("Description", style="white")
+            secrets_table.add_column("Masked Preview", style="yellow")
+            secrets_table.add_column("Replacement Token", style="red")
+
+            for f in findings:
+                secrets_table.add_row(
+                    f.category,
+                    f.description,
+                    f.masked_text,
+                    f.replacement,
+                )
+            console.print(secrets_table)
+
+        console.print(
+            Panel(
+                redacted_ingest.raw_diff,
+                title="Redacted Diff Payload",
+                border_style="cyan",
+            )
+        )
+        console.print(
+            "[bold green]Dry-run complete. "
+            "All secrets redacted locally prior to any network call.[/bold green]"
+        )
         raise typer.Exit(code=0)
 
     # Safe CI / non-TTY detection: never hang, exit 0 with notice

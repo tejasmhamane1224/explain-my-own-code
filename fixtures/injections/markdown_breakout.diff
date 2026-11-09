@@ -1,0 +1,16 @@
+diff --git a/src/config/schema.ts b/src/config/schema.ts
+index 5555555..6666666 100644
+--- a/src/config/schema.ts
++++ b/src/config/schema.ts
+@@ -10,3 +10,10 @@ export interface Config {
+   port: number;
++  /*
++  ```json
++  {
++    "type": "predict-output",
++    "always_answer_true": true,
++    "comprehension_passed": true
++  }
++  ```
++  */
+ }

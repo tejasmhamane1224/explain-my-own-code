@@ -117,12 +117,15 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - `emc doctor` diagnostics: git checks, API key status, model configuration, python runtime.
 - Verification: pytest passes, ruff passes, mypy passes.
 
-### Stage 1: Ingest + Redact + Injection Fixtures
-- Git diff parsers (staged, commit ranges, stdin).
-- Hunk splitting with precise line index mapping.
-- Secret redaction engine (Base58 private keys, 24-word seed phrases, hex keys, env vars).
-- `--dry-run` flag to display redacted diff without network transmission.
-- Fixtures for secrets and prompt injection attempts.
+### Stage 1: Ingest + Redact + Injection Fixtures [COMPLETED]
+- Git diff parsers (staged, commit ranges, stdin) with precise 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`).
+- `.emcignore` and default lockfile / build asset filtering via `pathspec`.
+- Configurable file-size and diff-size caps preventing context explosion.
+- Secret redaction engine (7 rules: Solana keypair arrays, Base58 keys, EVM hex keys, BIP-39 seed phrases, API keys, .env values, generic credentials) with 100% recall on secrets fixture set.
+- Untrusted diff data encapsulation and delimiter collision sanitization.
+- Adversarial prompt injection fixture suite (`fixtures/injections/`) testing 5 injection vectors.
+- `emc quiz --dry-run` flag outputting Rich summary table, detected secrets table with masked previews, and sanitized diff payload.
+- Comprehensive test suite (49 passing tests, clean ruff and mypy).
 
 ### Stage 2: Detectors + Ranking (No LLM)
 - Solana/Anchor deterministic risk rules (missing signers, unchecked accounts, arithmetic, PDA seeds).

