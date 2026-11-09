@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from emc import __version__
 from emc.config import load_config
 from emc.detect import run_detector_pipeline
 from emc.doctor import render_doctor_report, run_doctor_checks
+from emc.grade import ScoreBreakdown
 from emc.ingest import (
     GitError,
     encapsulate_diff,
@@ -36,6 +38,7 @@ from emc.llm import (
 from emc.plan import create_question_plans
 from emc.questions import QuestionGenerator
 from emc.redact import Redactor
+from emc.session import SessionRunner
 
 app = typer.Typer(
     name="emc",
@@ -201,6 +204,29 @@ def quiz_cmd(
     skip: Annotated[
         bool, typer.Option("--skip", help="Skip comprehension quiz (logged to ledger).")
     ] = False,
+    provider: Annotated[
+        Optional[str],
+        typer.Option("--provider", help="LLM provider: 'anthropic', 'fake', or 'local'."),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", help="Model name identifier."),
+    ] = None,
+    max_cost: Annotated[
+        Optional[float],
+        typer.Option("--max-cost", help="Max session budget in USD."),
+    ] = None,
+    answers: Annotated[
+        Optional[str],
+        typer.Option(
+            "--answers",
+            help="Comma-separated scripted answers for automated/testing sessions.",
+        ),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output session results as machine-readable JSON."),
+    ] = False,
 ) -> None:
     """Start an interactive comprehension quiz on a diff."""
     if skip:
@@ -356,21 +382,21 @@ def quiz_cmd(
         if generate and question_plans:
             config, _ = load_config()
             diff_hash = DiskCache.compute_hash(redacted_ingest.raw_diff)
-            provider: LLMProvider
+            dry_prov: LLMProvider
             if os.getenv("ANTHROPIC_API_KEY"):
-                provider = AnthropicProvider(
+                dry_prov = AnthropicProvider(
                     model=config.model,
                     max_cost_dollars=config.max_cost_dollars,
                     token_budget=config.token_budget,
                 )
             else:
-                provider = FakeProvider(
+                fake_dry = FakeProvider(
                     model=config.model,
                     max_cost_dollars=config.max_cost_dollars,
                     token_budget=config.token_budget,
                 )
                 for plan in question_plans:
-                    provider.enqueue_structured(
+                    fake_dry.enqueue_structured(
                         {
                             "type": plan.recommended_type.value,
                             "concept_id": plan.target_concept,
@@ -396,15 +422,16 @@ def quiz_cmd(
                             "explanation": f"Explanation for {plan.target_concept}",
                         }
                     )
-                    provider.enqueue_structured(
+                    fake_dry.enqueue_structured(
                         {"selected_key": "A", "confidence": 1.0, "reasoning": "Matches diff"}
                     )
-                    provider.enqueue_structured(
+                    fake_dry.enqueue_structured(
                         {"is_ambiguous": False, "defensible_choices": ["A"], "reasoning": "Clear"}
                     )
+                dry_prov = fake_dry
 
             cached_provider = CachedLLMProvider(
-                provider,
+                dry_prov,
                 cache_dir=config.cache_dir,
                 diff_hash=diff_hash,
             )
@@ -479,19 +506,144 @@ def quiz_cmd(
         )
         raise typer.Exit(code=0)
 
-    # Safe CI / non-TTY detection: never hang, exit 0 with notice
+    # Scripted input parsing
+    scripted_inputs: list[str] | None = None
+    if answers is not None:
+        scripted_inputs = [a.strip() for a in re.split(r"[,\n]", answers) if a.strip()]
+
+    # Safe CI / non-TTY detection: never hang, exit 0 with notice when no scripted inputs
     is_ci = os.getenv("CI", "").lower() in ("true", "1")
-    if not sys.stdin.isatty() or is_ci:
+    if scripted_inputs is None and (not sys.stdin.isatty() or is_ci):
         console.print(
             "[dim]Non-interactive terminal or CI environment detected. "
             "Skipping comprehension quiz.[/dim]"
         )
         raise typer.Exit(code=0)
 
-    console.print(
-        "[yellow]Interactive quiz pipeline is scheduled for Stage 4 (Session + Grading). "
-        "Run 'emc doctor' to verify system readiness.[/yellow]"
+    try:
+        ingest_result = ingest_diff(staged=staged, commit=commit, use_stdin=stdin)
+    except GitError as exc:
+        console.print(f"[bold red]Git Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if ingest_result.is_empty and not ingest_result.raw_diff.strip():
+        console.print("[yellow]No diff changes found to analyze.[/yellow]")
+        raise typer.Exit(code=0)
+
+    redactor = Redactor()
+    redacted_ingest, findings = redactor.redact_ingest_result(ingest_result)
+
+    detector_report = run_detector_pipeline(redacted_ingest)
+    question_plans = create_question_plans(detector_report, max_questions=3)
+
+    if not question_plans:
+        console.print(
+            "[yellow]No actionable diff hunks found for comprehension questions.[/yellow]"
+        )
+        raise typer.Exit(code=0)
+
+    config_result = load_config()
+    config = config_result.config
+    resolved_model = model or config.model
+    resolved_max_cost = max_cost if max_cost is not None else config.max_cost_dollars
+    diff_hash = DiskCache.compute_hash(redacted_ingest.raw_diff)
+
+    prov_type = (
+        provider.lower()
+        if provider
+        else ("anthropic" if os.getenv("ANTHROPIC_API_KEY") else "fake")
     )
+    llm_prov: LLMProvider
+    if prov_type == "anthropic":
+        llm_prov = AnthropicProvider(
+            model=resolved_model,
+            max_cost_dollars=resolved_max_cost,
+            token_budget=config.token_budget,
+        )
+    elif prov_type == "local":
+        llm_prov = LocalProvider(
+            model=resolved_model,
+            max_cost_dollars=resolved_max_cost,
+            token_budget=config.token_budget,
+        )
+    else:
+        fake = FakeProvider(
+            model=resolved_model,
+            max_cost_dollars=resolved_max_cost,
+            token_budget=config.token_budget,
+        )
+        for p in question_plans:
+            fake.enqueue_structured(
+                {
+                    "type": p.recommended_type.value,
+                    "concept_id": p.target_concept,
+                    "hunk_rank": p.hunk.rank,
+                    "file_path": p.file_path,
+                    "start_line": p.start_line,
+                    "end_line": p.end_line,
+                    "snippet": p.snippet,
+                    "stem": f"Comprehension check: {p.stem_template}",
+                    "choices": [
+                        {
+                            "key": "A",
+                            "text": "Correct expected behavior matching diff",
+                            "explanation": "Matches implementation",
+                        },
+                        {
+                            "key": "B",
+                            "text": "Incorrect alternative behavior",
+                            "explanation": "Does not match diff",
+                        },
+                    ],
+                    "answer_key": "A",
+                    "explanation": f"Explanation for {p.target_concept}",
+                    "hint_ladder": [
+                        f"Consider the concept {p.target_concept}.",
+                        f"Look closely at {p.file_path}:{p.start_line}.",
+                    ],
+                }
+            )
+            fake.enqueue_structured(
+                {"selected_key": "A", "confidence": 1.0, "reasoning": "Matches diff"}
+            )
+            fake.enqueue_structured(
+                {"is_ambiguous": False, "defensible_choices": ["A"], "reasoning": "Clear"}
+            )
+        llm_prov = fake
+
+    cached_provider = CachedLLMProvider(
+        llm_prov,
+        cache_dir=config.cache_dir,
+        diff_hash=diff_hash,
+    )
+    generator_inst = QuestionGenerator(cached_provider)
+    try:
+        accepted_qs, rejections = generator_inst.generate_quiz(question_plans, redacted_ingest)
+    except BudgetExceededError as exc:
+        console.print(f"[bold red]Budget Exceeded:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if not accepted_qs:
+        console.print(
+            "[yellow]Could not generate valid comprehension questions "
+            "passing quality gate.[/yellow]"
+        )
+        raise typer.Exit(code=0)
+
+    session_console = Console(quiet=True) if as_json else console
+    runner = SessionRunner(
+        questions=accepted_qs,
+        provider=cached_provider,
+        console=session_console,
+        input_stream=scripted_inputs,
+    )
+    breakdown: ScoreBreakdown = runner.run()
+
+    if as_json:
+        typer.echo(json.dumps(breakdown.model_dump(), indent=2))
+
+    if config.mode == "gate" and not breakdown.passed:
+        raise typer.Exit(code=1)
     raise typer.Exit(code=0)
 
 

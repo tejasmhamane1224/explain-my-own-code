@@ -150,10 +150,13 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - `emc generate` and `emc quiz --dry-run --generate` CLI commands with Rich table and JSON output.
 - Comprehensive acceptance tests covering every rejection path (162 passing tests).
 
-### Stage 4: Session + Grading
-- Interactive Rich terminal UI.
-- Hint ladder (revealing hints deducts score points).
-- Hybrid grading (deterministic match + rubric LLM judge for free text).
+### Stage 4: Session + Grading [COMPLETED]
+- Interactive Rich terminal UI (`render_question_panel`, `render_hint_panel`, `render_grade_result_panel`, `render_session_summary_table`, `render_verdict_panel`).
+- Progressive hint ladder with fractional score deductions (-25% per hint up to -75%).
+- Hybrid grading engine: deterministic key/number/text/line matcher and LLM rubric judge with deterministic keyword fallback.
+- Scriptable session driver (`SessionRunner`) supporting deterministic automated testing.
+- Non-interactive and CI environment detection with clean bypass on unscripted stdin.
+- End-to-end `emc quiz` integration across staged, commit, and stdin sources with `--answers` and `--json` support (207 passing tests).
 
 ### Stage 5: Ledger + Mastery + Report/Review
 - `.emc/ledger.jsonl` storage with Leitner box algorithm.

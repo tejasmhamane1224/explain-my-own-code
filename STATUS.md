@@ -1,7 +1,7 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 3: LLM Layer + Generation + Validator** -- **COMPLETED & HARDENED**
+**Stage 4: Session + Grading** -- **COMPLETED & HARDENED**
 
 ---
 
@@ -10,7 +10,7 @@
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
 - [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (177 passed tests).
-- [ ] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), hint ladder, deterministic matchers, LLM rubric judge for free text.
+- [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers, LLM rubric judge for free-text explain-back questions with offline keyword fallback, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (207 passed tests).
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
 - [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
 - [ ] **Stage 7: Evaluation Suite (`emc eval`)**: 30+ seeded diffs (20 Anchor, 10 TS), ablation vs naive single-prompt baseline, `docs/EVAL.md`.
@@ -90,11 +90,38 @@
 
 ---
 
+## Stage 4 Deliverables Summary
+1. **Grading Models & Score Aggregation (`src/emc/grade/models.py`)**:
+   - `GradeResult`: Individual question grade record tracking points awarded, base points, hints used, fractional penalty, and feedback.
+   - `RubricCriterionEvaluation` & `RubricEvaluation`: Itemized multi-criteria scoring for free-text answers.
+   - `ScoreBreakdown`: Session-level aggregation computing total points, percentage, hint counts, pass/fail threshold verdict, and results list.
+2. **Deterministic Grading Engine (`src/emc/grade/deterministic.py`)**:
+   - Exact case/punctuation-insensitive key matching (`A`, `a`, `Choice A`, `Option A`, `(A)`).
+   - 1-based numeric option selection (`1` -> `A`, `2` -> `B`).
+   - Verbatim and partial text matching against distractor choices.
+   - Spot-the-bug line number matching (`line 41`, `41`) against mutant targets.
+   - Progressive hint ladder penalties: -25% per revealed hint, capped at -75%.
+3. **Rubric-Based LLM Judge & Deterministic Fallback (`src/emc/grade/rubric.py`)**:
+   - Structured LLM evaluation for `explain-back` free-text responses via `RubricEvaluationLLMOutput`.
+   - Deterministic offline fallback using taxonomy concept matching and keyword set intersection, ensuring reliable testability and offline utility.
+4. **Rich Terminal Quiz Interface (`src/emc/session/`)**:
+   - `display.py`: Syntax-highlighted diff snippet panels (monokai), mutant bug boxes, question stems, styled choices, hint disclaimers, immediate feedback panels, and final summary tables with verdict banners.
+   - `runner.py` (`SessionRunner`): Interactive question loop with hint ladder commands (`H`/`hint`), skip commands (`S`/`skip`), and quit commands (`Q`/`quit`).
+   - Scriptable session driver: Accepts sequence/stream of inputs for deterministic non-TTY testing.
+   - CI & Non-TTY Bypass: Automatically detects `CI=true` or non-terminal environments and exits 0 cleanly unless a scripted input stream is provided.
+5. **CLI Integration (`src/emc/cli.py`)**:
+   - Wired `emc quiz` to execute interactive and scripted sessions on `--staged`, `--commit <rev>`, or `--stdin`.
+   - Supports `--provider` (`fake`, `anthropic`, `local`), `--model`, `--max-cost`, `--answers`, and `--json`.
+6. **Acceptance Test Suite (`tests/test_session.py` & `tests/test_grade.py`)**:
+   - 207 total passing unit and acceptance tests covering: perfect scores, progressive hint ladder deductions, hint exhaustion, wrong answers, mixed scoring, rubric grading with LLM & fallback, skip commands, quit aborts, unexpected EOF, blank input filtering, CI non-interactive bypass, CI scripted execution, and machine-readable JSON output.
+
+---
+
 ## Verification Commands
-To verify Stage 3 independently, run from the `explain-my-own-code` directory:
+To verify Stage 4 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (177 passing tests)
+# 1. Run complete unit and acceptance test suite (207 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -104,15 +131,15 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Run rejection path acceptance tests specifically
-pytest tests/test_rejection_paths.py -v
+# 4. Run Stage 4 session and grading tests specifically
+pytest tests/test_session.py tests/test_grade.py -v
 
-# 5. Try emc generate with fake provider on a positive Anchor smart contract fixture
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc generate --stdin
+# 5. Run scripted comprehension quiz end-to-end on positive Anchor fixture
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "A,A,A"
 
-# 6. Try emc generate with machine-readable JSON output
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc generate --stdin --json
+# 6. Run scripted quiz with hint ladder usage (-25% penalty)
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "H,A,A,A"
 
-# 7. Try dry-run with full question generation and quality gate validation
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --dry-run --generate
+# 7. Run scripted quiz with machine-readable JSON output
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "A,A,A" --json
 ```

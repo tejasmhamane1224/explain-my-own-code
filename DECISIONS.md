@@ -150,4 +150,22 @@
   4. Cache Budget Priority: In `CachedLLMProvider`, perform cache check prior to `check_budget()` so cached responses ($0.00 cost) are served without tripping budget caps.
   5. Immediate Abort on Budget Exceeded: In `QuestionGenerator`, catch `BudgetExceededError` explicitly, log rejection reason `budget_exceeded`, and break retry loops immediately.
 
+## ADR-018: Interactive Rich Terminal Quiz Loop, Progressive Hint Ladder Penalties, and Scriptable Session Driver
+- **Status**: Accepted
+- **Context**: Developers need an engaging, informative terminal experience during comprehension verification that visualizes diff context with syntax highlighting, provides progressive hints when stuck without giving away answers for free, and runs deterministically in automated CI/test environments without hanging on stdin.
+- **Decision**:
+  1. Rich UI Display: Render questions inside bordered Rich panels displaying file path, line numbers, concept badge, syntax-highlighted code snippet (monokai theme), spot-the-bug mutant highlights, choices, and hint count.
+  2. Progressive Hint Ladder: Each question supports ordered hints (subtle -> specific -> near-complete). Revealing a hint deducts a fractional penalty (-25% per hint, capped at -75%), preserving developer agency while incentivizing independent reasoning.
+  3. Scriptable Session Driver: `SessionRunner` accepts an optional `input_stream` (sequence or iterator). When provided, user inputs are read deterministically from the stream.
+  4. CI & Non-TTY Bypass: In non-interactive environments (`CI=true` or `not sys.stdin.isatty()`), if no scripted input stream is provided, exit cleanly with code 0 and an informative notice rather than hanging waiting for user input.
+
+## ADR-019: Hybrid Deterministic & Rubric-Based LLM Free-Text Grading with Offline Keyword Fallback
+- **Status**: Accepted
+- **Context**: Comprehension assessment requires grading both objective multiple-choice/spot-the-bug questions and subjective free-text `explain-back` justifications. Relying solely on LLMs introduces latency, non-determinism, and cost; relying solely on exact string matching fails on open-ended explanations.
+- **Decision**:
+  1. Deterministic Matcher: For multiple-choice, predict-output, consequence, and spot-the-bug questions, support exact key matching (case/punctuation-insensitive), numeric option indexing (1 -> A), full text matching, and line number extraction.
+  2. Structured Rubric Judge: For `explain-back` questions, evaluate user explanations against predefined rubric criteria (`RubricCriterion`) using structured LLM output (`RubricEvaluationLLMOutput`), awarding itemized points and constructive feedback.
+  3. Deterministic Offline Fallback: When LLM providers are unavailable or offline, evaluate rubric criteria deterministically using required taxonomy concepts and keyword stem set intersection, ensuring reliable testability and offline developer utility.
+
+
 
