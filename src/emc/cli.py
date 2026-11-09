@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -21,7 +20,21 @@ from emc import __version__
 from emc.config import load_config
 from emc.detect import get_taxonomy, run_detector_pipeline
 from emc.doctor import render_doctor_report, run_doctor_checks
+from emc.gate import (
+    evaluate_gate,
+    format_commit_trailer,
+    log_skip_event,
+    save_staged_trailer,
+)
 from emc.grade import ScoreBreakdown
+from emc.hooks import (
+    ForeignHookError,
+    HookError,
+    get_git_hooks_dir,
+    handle_commit_msg_hook,
+    install_hooks,
+    uninstall_hooks,
+)
 from emc.ingest import (
     GitError,
     encapsulate_diff,
@@ -80,21 +93,7 @@ def version_callback(value: bool) -> None:
 
 def _get_git_hooks_dir() -> Path | None:
     """Resolve git hooks directory using git rev-parse or fallback to .git/hooks."""
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--git-path", "hooks"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-            shell=False,
-        )
-        resolved = Path(proc.stdout.strip())
-        return resolved if resolved.is_absolute() else Path.cwd() / resolved
-    except Exception:
-        fallback = Path.cwd() / ".git" / "hooks"
-        return fallback if fallback.parent.is_dir() else None
+    return get_git_hooks_dir()
 
 
 @app.callback()
@@ -243,6 +242,25 @@ def quiz_cmd(
     config_result = load_config()
     config = config_result.config
 
+    if config.mode == "off":
+        log_skip_event(reason="mode_off")
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "skipped",
+                        "mode": "off",
+                        "message": "Comprehension quiz is disabled (mode: off).",
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print(
+                "[yellow]Comprehension quiz is disabled (mode: off). Skipping check.[/yellow]"
+            )
+        raise typer.Exit(code=0)
+
     if skip:
         if not config.skip_allowed:
             if as_json:
@@ -263,6 +281,7 @@ def quiz_cmd(
                 )
             raise typer.Exit(code=1)
 
+        log_skip_event(reason="flag_skip")
         if as_json:
             typer.echo(
                 json.dumps(
@@ -777,12 +796,39 @@ def quiz_cmd(
         ]
         append_events(ledger_events, ledger_path=get_default_ledger_path())
 
-    if as_json:
-        typer.echo(json.dumps(breakdown.model_dump(), indent=2))
+    # Evaluate commit gate against configured mode
+    gate_res = evaluate_gate(breakdown, mode=config.mode)
 
-    if config.mode == "gate" and not breakdown.passed:
-        raise typer.Exit(code=1)
-    raise typer.Exit(code=0)
+    # Save staged commit trailer if enabled
+    if config.commit_trailer and breakdown.total_questions > 0:
+        trailer_style = getattr(config, "trailer_style", "fraction")
+        trailer_str = format_commit_trailer(breakdown, style=trailer_style)
+        save_staged_trailer(trailer_str)
+
+    if not as_json:
+        if gate_res.warning:
+            console.print(
+                Panel(
+                    f"[bold yellow]WARNING: {gate_res.message}[/bold yellow]",
+                    title="[bold yellow]Commit Warning (mode: warn)[/bold yellow]",
+                    border_style="yellow",
+                )
+            )
+        elif gate_res.blocked:
+            console.print(
+                Panel(
+                    f"[bold red]BLOCKED: {gate_res.message}[/bold red]",
+                    title="[bold red]Commit Blocked (mode: gate)[/bold red]",
+                    border_style="red",
+                )
+            )
+
+    if as_json:
+        payload = breakdown.model_dump()
+        payload["gate"] = gate_res.model_dump()
+        typer.echo(json.dumps(payload, indent=2))
+
+    raise typer.Exit(code=gate_res.exit_code)
 
 
 @app.command(name="detect")
@@ -1399,37 +1445,48 @@ def eval_cmd(
 @hook_app.command(name="install")
 def hook_install(
     force: Annotated[
-        bool, typer.Option("--force", "-f", help="Overwrite existing pre-commit hook")
+        bool, typer.Option("--force", "-f", help="Overwrite existing hooks (backed up to .emc.bak)")
     ] = False,
+    commit_msg: Annotated[
+        bool,
+        typer.Option(
+            "--commit-msg/--no-commit-msg",
+            help="Install commit-msg hook for comprehension trailers",
+        ),
+    ] = True,
 ) -> None:
-    """Install emc git pre-commit hook into current repository."""
-    hooks_dir = _get_git_hooks_dir()
-    if not hooks_dir or not hooks_dir.parent.exists():
-        console.print("[bold red]Not inside a git repository root.[/bold red]")
+    """Install emc git pre-commit and optional commit-msg hooks into current repository."""
+    try:
+        res = install_hooks(force=force, install_commit_msg=commit_msg)
+    except ForeignHookError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(code=1)
+    except HookError as exc:
+        console.print(f"[bold red]{exc}[/bold red]")
         raise typer.Exit(code=1)
 
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    pre_commit_file = hooks_dir / "pre-commit"
+    if res.pre_commit_status == "already_installed":
+        console.print("[bold green]emc pre-commit hook is already installed.[/bold green]")
+    elif res.pre_commit_status == "overwritten":
+        console.print(
+            "[bold green]Foreign pre-commit hook backed up to .emc.bak and "
+            f"installed emc pre-commit hook to {res.hooks_dir / 'pre-commit'}[/bold green]"
+        )
+    else:
+        target_path = res.hooks_dir / "pre-commit"
+        console.print(f"[bold green]Installed emc pre-commit hook to {target_path}[/bold green]")
 
-    if pre_commit_file.exists():
-        content = pre_commit_file.read_text(encoding="utf-8")
-        if "emc quiz" in content:
-            console.print("[bold green]emc pre-commit hook is already installed.[/bold green]")
-            return
-        if not force:
+    if commit_msg:
+        if res.commit_msg_status == "already_installed":
+            console.print("[bold green]emc commit-msg hook is already installed.[/bold green]")
+        elif res.commit_msg_status == "overwritten":
             console.print(
-                "[yellow]A pre-commit hook already exists. "
-                "Use --force to overwrite, or append 'emc quiz --staged' manually.[/yellow]"
+                "[bold green]Foreign commit-msg hook backed up to .emc.bak and "
+                f"installed emc commit-msg hook to {res.hooks_dir / 'commit-msg'}[/bold green]"
             )
-            raise typer.Exit(code=1)
-
-    script = "#!/usr/bin/env sh\n# explain-my-own-code pre-commit hook\nemc quiz --staged\n"
-    pre_commit_file.write_text(script, encoding="utf-8")
-    try:
-        pre_commit_file.chmod(0o755)
-    except Exception:
-        pass
-    console.print(f"[bold green]Installed emc pre-commit hook to {pre_commit_file}[/bold green]")
+        else:
+            cm_target = res.hooks_dir / "commit-msg"
+            console.print(f"[bold green]Installed emc commit-msg hook to {cm_target}[/bold green]")
 
 
 @hook_app.command(name="uninstall")
@@ -1441,24 +1498,50 @@ def hook_uninstall(
         ),
     ] = False,
 ) -> None:
-    """Uninstall emc git pre-commit hook."""
-    hooks_dir = _get_git_hooks_dir()
-    pre_commit_file = (hooks_dir / "pre-commit") if hooks_dir else Path(".git/hooks/pre-commit")
-
-    if not pre_commit_file.exists():
-        console.print(f"[yellow]No hook found at {pre_commit_file}[/yellow]")
-        return
-
-    content = pre_commit_file.read_text(encoding="utf-8")
-    if "emc" not in content and not force:
-        console.print(
-            "[yellow]Existing pre-commit hook does not appear to belong to emc. "
-            "Use --force to remove anyway.[/yellow]"
-        )
+    """Uninstall emc git hooks."""
+    try:
+        res = uninstall_hooks(force=force)
+    except ForeignHookError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(code=1)
+    except HookError as exc:
+        console.print(f"[bold red]{exc}[/bold red]")
         raise typer.Exit(code=1)
 
-    pre_commit_file.unlink()
-    console.print(f"[bold green]Removed {pre_commit_file}[/bold green]")
+    hooks_dir = res.hooks_dir or Path(".git/hooks")
+    if not res.pre_commit_removed and not res.commit_msg_removed:
+        console.print(f"[yellow]No hook found at {hooks_dir / 'pre-commit'}[/yellow]")
+        return
+
+    if res.pre_commit_removed:
+        if res.pre_commit_restored:
+            console.print("[bold green]Restored original pre-commit hook from backup.[/bold green]")
+        else:
+            console.print(f"[bold green]Removed {hooks_dir / 'pre-commit'}[/bold green]")
+
+    if res.commit_msg_removed:
+        if res.commit_msg_restored:
+            console.print("[bold green]Restored original commit-msg hook from backup.[/bold green]")
+        else:
+            console.print(f"[bold green]Removed {hooks_dir / 'commit-msg'}[/bold green]")
+
+
+@hook_app.command(name="commit-msg")
+def hook_commit_msg(
+    msg_file: Annotated[Path, typer.Argument(help="Path to git commit message file")],
+    trailer: Annotated[
+        Optional[str],
+        typer.Option("--trailer", help="Explicit commit trailer string to append"),
+    ] = None,
+) -> None:
+    """Git commit-msg hook handler to append comprehension trailer."""
+    config_result = load_config()
+    cfg = config_result.config
+    if not cfg.commit_trailer and not trailer:
+        raise typer.Exit(code=0)
+
+    success = handle_commit_msg_hook(msg_file, trailer=trailer)
+    raise typer.Exit(code=0 if success else 1)
 
 
 if __name__ == "__main__":

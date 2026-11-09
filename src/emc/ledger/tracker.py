@@ -44,6 +44,21 @@ class MasteryTracker:
         """Process a single ledger event, advancing or demoting the concept's Leitner box."""
         concept_id = event.concept_id
 
+        # Ignore system-level events (e.g. system.skipped) so they do not pollute mastery taxonomy
+        if concept_id.startswith("system.") or event.question_type == "skip":
+            return ConceptMastery(
+                concept_id=concept_id,
+                name=concept_id,
+                category="system",
+                box=1,
+                attempts=0,
+                correct_count=0,
+                streak=0,
+                pass_rate=0.0,
+                last_reviewed=None,
+                mastery_level=MasteryLevel.WEAK,
+            )
+
         if concept_id not in self._masteries:
             # Fallback for dynamic / untaxonomized concept
             concept_def = self.taxonomy.get(concept_id)

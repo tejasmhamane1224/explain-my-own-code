@@ -1,7 +1,7 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 5: Ledger + Mastery + Report/Review** -- **COMPLETED & VERIFIED**
+**Stage 6: Modes, Gate, Hooks, CI-Safe Behavior** -- **COMPLETED & VERIFIED**
 
 ---
 
@@ -11,8 +11,8 @@
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
 - [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (177 passed tests).
 - [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers with disambiguation, LLM rubric judge for free-text explain-back questions with offline keyword fallback and prompt injection defenses, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (219 passed tests).
-- [x] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl` append-only storage, Leitner 5-box spaced repetition mastery tracker, automatic quiz session recording, Rich comprehension report tables & JSON export, targeted review replay engine with immediate box progression (236 passed tests).
-- [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
+- [x] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl` append-only storage, Leitner 5-box spaced repetition mastery tracker, automatic quiz session recording, Rich comprehension report tables & JSON export, targeted review replay engine with immediate box progression (243 passed tests).
+- [x] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit and commit-msg hook installers, Comprehension trailers, CI / non-TTY bypass, foreign hook protection with backup/restore, git worktree support (265 passed tests).
 - [ ] **Stage 7: Evaluation Suite (`emc eval`)**: 30+ seeded diffs (20 Anchor, 10 TS), ablation vs naive single-prompt baseline, `docs/EVAL.md`.
 - [ ] **Stage 8: Documentation & Security Hardening**: Comprehensive README with honest competitor matrix, threat model, `SECURITY.md`, `CONTRIBUTING.md`.
 - [ ] **Stage 9: Release Readiness**: Packaging dry-run (`pipx`), changelog, versioning, GitHub Actions CI matrix.
@@ -154,11 +154,52 @@
 
 ---
 
+## Stage 6 Deliverables Summary
+1. **Commit Gate Evaluator & Operational Modes (`src/emc/gate/evaluator.py`)**:
+   - `GateResult` schema capturing `mode`, `passed`, `exit_code`, `message`, `warning`, `blocked`.
+   - `evaluate_gate` supporting all 3 operational modes:
+     - `off`: Comprehension check disabled, logs skip event to ledger, exits 0.
+     - `warn` (default): Score below threshold renders prominent warning banner, exits 0 (does not block commits).
+     - `gate`: Score below threshold renders blocking error banner, exits 1 (blocks commit). Passing score exits 0.
+   - `log_skip_event`: Records structured `system.skipped` audit events to `.emc/ledger.jsonl` without polluting concept mastery Leitner boxes.
+2. **Commit Trailer Engine (`src/emc/gate/trailer.py`)**:
+   - `format_commit_trailer`: Formats commit trailers in `fraction` ("Comprehension: 4/5"), `percentage` ("Comprehension: 80%"), and `detailed` ("Comprehension: 100% (anchor.signer_check: 2/2)") styles from `ScoreBreakdown`.
+   - `append_commit_trailer`: Safely injects trailer into git commit message file before trailing git comments (`#`), deduplicates existing trailers in place, and safely avoids corrupting empty/aborted commit messages.
+   - `save_staged_trailer` & `load_staged_trailer`: Stages trailer in `.emc/last_trailer` during `pre-commit` and safely consumes/unlinks it during `commit-msg`.
+3. **Git Hooks Manager (`src/emc/hooks/manager.py` & CLI `emc hook`)**:
+   - `get_git_hooks_dir`: Robust git hooks directory resolution using `git rev-parse --git-path hooks`, supporting standard git repos, git worktrees, submodules, and nested subdirectories.
+   - `install_hooks`: Installs `pre-commit` (running `emc quiz --staged`) and optional `commit-msg` (running `emc hook commit-msg "$1"`).
+   - Foreign Hook Protection: Detects non-emc foreign hooks and refuses to overwrite without `--force`. When `--force` is provided, automatically backs up the foreign hook to `.emc.bak`.
+   - Idempotency: Repeated installs detect existing emc markers and avoid duplicating or corrupting scripts.
+   - `uninstall_hooks`: Cleanly removes emc hooks and automatically restores original hooks from `.emc.bak` if a backup exists.
+   - `emc hook commit-msg`: Injects staged trailer or explicit `--trailer` into the commit message file.
+4. **CI-Safe Non-Interactive Bypass (`src/emc/cli.py`)**:
+   - Detects `CI=true` or non-TTY stdin and skips with a clear message and exit 0 across all modes (`off`, `warn`, `gate`), preventing CI hangs.
+   - Honors explicit scripted inputs (`--answers`) in CI to permit automated integration tests.
+5. **Acceptance Test Suite (`tests/test_gate.py` & `tests/test_hooks.py`)**:
+   - 22 comprehensive unit and integration acceptance tests (265 total passing tests across the entire repository):
+     - `off` mode execution, ledger skip logging, and exit 0.
+     - `warn` mode failing score displaying warning banner and exiting 0.
+     - `warn` mode passing score exiting 0.
+     - `gate` mode failing score displaying blocked error banner and exiting 1.
+     - `gate` mode passing score exiting 0.
+     - `--skip` flag enforcement (allowed vs disallowed by config) with ledger event audit verification.
+     - CI / non-TTY environment behavior across all modes.
+     - CI with scripted inputs honoring gate mode.
+     - Commit trailer formatting across fraction, percentage, and detailed styles.
+     - Trailer injection with comment separation, deduplication, and aborted commit protection.
+     - Hooks directory discovery in standard repos, deep subdirectories, worktrees, and outside git.
+     - Hook installation, idempotency, foreign hook protection, backup and restore on uninstall.
+     - Worktree hooks installation and lifecycle.
+     - CLI `emc hook commit-msg` integration with staged and explicit trailers.
+
+---
+
 ## Verification Commands
-To verify Stage 5 independently, run from the `explain-my-own-code` directory:
+To verify Stage 6 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (243 passing tests)
+# 1. Run complete unit and acceptance test suite (265 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -168,19 +209,17 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Run Stage 5 ledger, mastery, report, and review tests specifically
-pytest tests/test_ledger.py -v
+# 4. Run Stage 6 gate and hooks tests specifically
+pytest tests/test_gate.py tests/test_hooks.py -v
 
-# 5. Display comprehension mastery overview table
-python -m emc.cli report
+# 5. Test hook installation in a test repo
+python -m emc.cli hook install
 
-# 6. Display mastery overview in machine-readable JSON
-python -m emc.cli report --json
+# 6. Test hook idempotency
+python -m emc.cli hook install
 
-# 7. Run targeted spaced repetition review on weak concept
-python -m emc.cli review --concept math.checked_arith --answers "A"
-
-# 8. Run targeted review with machine-readable JSON output
-python -m emc.cli review --concept math.checked_arith --answers "A" --json
+# 7. Test commit message trailer formatting and injection
+python -m emc.cli hook commit-msg <commit_msg_file> --trailer "Comprehension: 5/5"
 ```
+
 

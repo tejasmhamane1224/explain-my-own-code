@@ -49,6 +49,10 @@ class EMCConfig(BaseModel):
         default=True,
         description="Whether to append 'Comprehension: X/Y' trailer to commit message",
     )
+    trailer_style: Literal["fraction", "percentage", "detailed"] = Field(
+        default="fraction",
+        description="Format style for commit trailer: 'fraction', 'percentage', or 'detailed'",
+    )
     cache_dir: Path = Field(
         default_factory=lambda: Path(".emc/cache"),
         description="Directory for local diff and prompt response caches",

@@ -217,3 +217,23 @@
   5. Root Ledger Resolution: Resolve ledger paths via `get_default_ledger_path()` across all CLI commands.
   6. Option Validation: Validate `--limit > 0` in `emc review` and `--category` against taxonomy in `emc report`.
 
+## ADR-024: Operational Modes, Commit Gate Evaluation, Trailers, and Git Hooks Architecture
+- **Status**: Accepted
+- **Context**: Developers need configurable enforcement policies (`off`, `warn`, `gate`) across local workflows and CI pipelines, git commit comprehension trailers (`Comprehension: X/Y`), and safe, idempotent git hooks with foreign hook protection.
+- **Decision**:
+  1. Three-Tier Operational Modes (`src/emc/gate/evaluator.py`):
+     - `off`: Comprehension check is disabled; logs structured skip audit event to `.emc/ledger.jsonl`, prints notice, and exits 0.
+     - `warn`: Executes quiz; if score is below threshold, prints prominent warning banner but permits commit with exit 0.
+     - `gate`: Executes quiz; if score is below threshold, displays blocking error banner and exits 1, halting git commit. Passing score exits 0.
+  2. CI & Non-TTY Bypass Safety: Automatically detect `CI=true` or non-terminal environments and skip with exit 0 without hanging across all modes, while continuing to respect explicit scripted inputs (`--answers`).
+  3. Commit Trailer Format and Injection (`src/emc/gate/trailer.py`):
+     - Supports `fraction` (`Comprehension: 4/5`), `percentage` (`Comprehension: 80%`), and `detailed` (`Comprehension: 100% (anchor.signer_check: 2/2)`) trailer styles.
+     - Staged trailer file (`.emc/last_trailer`) staged during `pre-commit` and consumed/unlinked during `commit-msg`.
+     - Trailer injection places the trailer before trailing git comments (`#`), deduplicates existing trailers in place, and never modifies empty/aborted commit messages.
+  4. Git Hooks Discovery & Foreign Hook Protection (`src/emc/hooks/manager.py`):
+     - Discovers hooks directory using `git rev-parse --git-path hooks` with directory traversal fallbacks, fully supporting git worktrees, submodules, and subdirectories.
+     - Detects existing foreign hooks and refuses to overwrite without `--force`. When `--force` is passed, automatically creates a backup (`.emc.bak`).
+     - Uninstallation removes emc hooks and automatically restores the original foreign hook from backup if `.emc.bak` exists.
+     - Idempotent: repeated `hook install` invocations detect existing emc markers and avoid duplicating scripts.
+
+

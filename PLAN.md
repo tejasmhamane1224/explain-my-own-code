@@ -166,12 +166,15 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - `emc review`: Spaced repetition session generator and runner targeting weak concepts (Box 1 & 2), interactive or scripted (`--answers`), supporting `--limit`, `--concept`, `--provider`, and `--json` with immediate ledger updates.
 - 17 unit and acceptance tests covering ledger append/read, corrupt line handling, thread safety, Leitner box transitions, CLI report, CLI review, and full end-to-end integration (236 total passing tests).
 
-### Stage 6: Modes, Gate, Hooks, CI-Safe Behavior
-- `.emc.toml` configuration parser.
-- Modes: `off`, `warn`, `gate`.
-- Git pre-commit and post-commit hook installers.
-- Commit trailer injection ("Comprehension: 4/5").
-- Non-interactive and CI detection (no-TTY bypass).
+### Stage 6: Modes, Gate, Hooks, CI-Safe Behavior (Completed)
+- `.emc.toml` configuration parser with `mode`, `skip_allowed`, `commit_trailer`, `trailer_style`.
+- Three operational modes: `off` (disabled, logs skip event, exits 0), `warn` (alerts on failure, exits 0), `gate` (blocks commit on failure, exits 1).
+- Non-interactive and CI detection (no-TTY bypass with clean exit 0 across all modes, honoring scripted `--answers`).
+- Commit trailer formatting (`fraction`, `percentage`, `detailed`) and safe injection into commit message file.
+- Staged trailer lifecycle: saved during `pre-commit` and consumed during `commit-msg`.
+- Git hook manager discovering hooks dir via `git rev-parse --git-path hooks` supporting standard repos, worktrees, submodules, and subdirectories.
+- Foreign hook protection with automatic backup to `.emc.bak`, idempotent installation, and clean restoration on uninstall.
+- 22 comprehensive acceptance tests in `tests/test_gate.py` and `tests/test_hooks.py` (265 total passing tests).
 
 ### Stage 7: Evaluation Suite (`emc eval`)
 - 30+ seeded-bug diffs (20 Anchor Rust, 10 TS).
