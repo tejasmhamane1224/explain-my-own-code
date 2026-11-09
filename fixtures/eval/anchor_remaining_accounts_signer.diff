@@ -1,0 +1,10 @@
+diff --git a/programs/multisig/src/lib.rs b/programs/multisig/src/lib.rs
+--- a/programs/multisig/src/lib.rs
++++ b/programs/multisig/src/lib.rs
+@@ -94,6 +94,7 @@
+ pub fn execute_multi(ctx: Context<ExecuteMulti>) -> Result<()> {
++    for acc in ctx.remaining_accounts.iter() {
+         let _info = acc.to_account_info();
+     }
+     Ok(())
+ }

@@ -167,7 +167,7 @@ def test_cli_quiz_skip_and_ci(cli_runner: CliRunner, monkeypatch: pytest.MonkeyP
 
 def test_cli_future_stage_commands(cli_runner: CliRunner) -> None:
     """Verify future stage subcommands render roadmap status."""
-    for cmd in ["explain", "eval"]:
+    for cmd in ["explain"]:
         res = cli_runner.invoke(app, [cmd])
         assert res.exit_code == 0
         assert "scheduled for Stage" in res.stdout

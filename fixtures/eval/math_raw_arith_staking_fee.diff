@@ -1,0 +1,8 @@
+diff --git a/programs/staking/src/lib.rs b/programs/staking/src/lib.rs
+--- a/programs/staking/src/lib.rs
++++ b/programs/staking/src/lib.rs
+@@ -58,6 +58,7 @@
+ pub fn calculate_reward(amount: u64, fee_basis_points: u64) -> Result<u64> {
++    let fee = amount * fee_basis_points / 10000;
+     Ok(fee)
+ }

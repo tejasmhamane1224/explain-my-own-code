@@ -1,0 +1,10 @@
+diff --git a/programs/governance/src/lib.rs b/programs/governance/src/lib.rs
+--- a/programs/governance/src/lib.rs
++++ b/programs/governance/src/lib.rs
+@@ -38,6 +38,7 @@
+ #[derive(Accounts)]
+ pub struct CastVote<'info> {
++    #[account(mut, seeds = [b"proposal", proposal_id.to_le_bytes().as_ref()])]
+     pub proposal: Account<'info, Proposal>,
+     pub voter: Signer<'info>,
+ }

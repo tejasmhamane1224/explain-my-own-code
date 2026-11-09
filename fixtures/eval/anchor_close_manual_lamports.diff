@@ -1,0 +1,9 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -88,6 +88,7 @@
+ pub fn close_vault(ctx: Context<CloseVault>) -> Result<()> {
+     let account = &ctx.accounts.vault;
++    **account.lamports.borrow_mut() = 0;
+     Ok(())
+ }

@@ -1,0 +1,8 @@
+diff --git a/src/wallet/account.ts b/src/wallet/account.ts
+--- a/src/wallet/account.ts
++++ b/src/wallet/account.ts
+@@ -17,6 +17,7 @@
+ export function fetchAccount(userInput: string) {
++    const pubkey = new PublicKey(userInput);
+     return connection.getAccountInfo(pubkey);
+ }

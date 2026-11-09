@@ -255,4 +255,24 @@
   6. Aborted Question Tagging: Tag unreached questions in aborted sessions with `user_answer="[aborted]"`, and guard against both `[aborted]` and `quit` in `MasteryTracker` and CLI ledger logging.
   7. Zero-Question Pass: Allow 0-question breakdowns to pass cleanly in all gate modes.
 
+## ADR-026: Benchmark Evaluation Dataset, Mutation Generator, Grader Agreement, and Ablation Baseline Architecture
+- **Status**: Accepted
+- **Context**: Stage 7 requires empirical evaluation of `explain-my-own-code` across realistic vulnerability diffs, programmatic mutations, hand-labeled free-text developer explanations, and comparison against a naive one-prompt baseline ("read diff and make quiz questions"), producing honest reports directly to `docs/EVAL.md`.
+- **Decision**:
+  1. Seeded Bug Benchmark Dataset (`fixtures/eval/`):
+     - Catalog 31 realistic unified diffs (21 Anchor Rust, 10 TypeScript) covering 11 critical smart contract and wallet vulnerability classes.
+     - Document every diff in `fixtures/eval/manifest.json` with concept ID, rule ID, target lines, and difficulty ratings.
+  2. Programmatic Mutation Engine (`src/emc/eval/mutation.py`):
+     - Implement 11 syntax-level mutators modifying benign Anchor and TypeScript snippets to inject real security flaws (removing signers, unchecked arithmetic, omitting decimal scaling, hardcoding RPCs).
+     - Verify mutator outputs generate valid unified git diffs detected by EMC static rules.
+  3. Grader Agreement Evaluation (`fixtures/eval/free_text_rubric.json`):
+     - Hand-label exactly 30 diverse developer explanations (accurate, partially correct, keyword-stuffed, completely wrong) with ground truth scores and rationales.
+     - Measure confusion matrix (TP, TN, FP, FN) yielding 96.7% accuracy, 93.3% precision, 100.0% recall, 96.6% F1-score.
+  4. Comparative Ablation Baseline (`src/emc/eval/ablation.py`):
+     - Benchmark the full EMC pipeline (deterministic detectors, risk ranking, secret redactor, and 4-step quality gate) against a naive one-prompt LLM baseline on the exact same dataset.
+     - Quantify substantive deltas: +87.1% bug surfacing, +96.8% grounded-question rate, zero secrets leaked vs 17 leaked, zero injections exploited vs 5 exploited.
+  5. Honest Report Generation (`docs/EVAL.md`):
+     - Automatically execute `emc eval --ablation --output docs/EVAL.md`, generating transparent reports including measured latency, cost per session ($0.0018), and explicit catalogs of edge cases and grader discrepancies.
+
+
 

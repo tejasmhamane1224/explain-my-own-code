@@ -1,0 +1,10 @@
+diff --git a/programs/registry/src/lib.rs b/programs/registry/src/lib.rs
+--- a/programs/registry/src/lib.rs
++++ b/programs/registry/src/lib.rs
+@@ -46,6 +46,7 @@
+ #[derive(Accounts)]
+ pub struct ExtendRecord<'info> {
++    #[account(mut, realloc = 200, realloc::zero = true)]
+     pub record: Account<'info, Record>,
+     pub payer: Signer<'info>,
+ }

@@ -1,0 +1,10 @@
+diff --git a/programs/lending/src/lib.rs b/programs/lending/src/lib.rs
+--- a/programs/lending/src/lib.rs
++++ b/programs/lending/src/lib.rs
+@@ -23,6 +23,7 @@
+ #[derive(Accounts)]
+ pub struct LiquidateLoan<'info> {
++    pub pyth_oracle: UncheckedAccount<'info>,
+     #[account(mut)]
+     pub loan: Account<'info, Loan>,
+ }

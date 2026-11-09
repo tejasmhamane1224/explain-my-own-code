@@ -1,0 +1,7 @@
+diff --git a/src/token/mint.ts b/src/token/mint.ts
+--- a/src/token/mint.ts
++++ b/src/token/mint.ts
+@@ -24,6 +24,7 @@
+ export function mintToken(mint: PublicKey, dest: PublicKey, auth: PublicKey, uiAmount: number) {
++    return createMintToInstruction(mint, dest, auth, uiAmount);
+ }

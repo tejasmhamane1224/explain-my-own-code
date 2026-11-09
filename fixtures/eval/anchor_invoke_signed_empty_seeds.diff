@@ -1,0 +1,8 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -73,6 +73,7 @@
+ pub fn transfer_funds(ctx: Context<TransferFunds>) -> Result<()> {
++    invoke_signed(&ix, &accounts, &[])?;
+     Ok(())
+ }

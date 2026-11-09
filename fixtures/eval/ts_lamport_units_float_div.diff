@@ -1,0 +1,8 @@
+diff --git a/src/wallet/fees.ts b/src/wallet/fees.ts
+--- a/src/wallet/fees.ts
++++ b/src/wallet/fees.ts
+@@ -20,6 +20,7 @@
+ export function splitReward(lamports: number): number {
++    const half = lamports / 2.0;
+     return half;
+ }

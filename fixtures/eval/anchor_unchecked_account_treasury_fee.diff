@@ -1,0 +1,10 @@
+diff --git a/programs/dex/src/lib.rs b/programs/dex/src/lib.rs
+--- a/programs/dex/src/lib.rs
++++ b/programs/dex/src/lib.rs
+@@ -28,6 +28,7 @@
+ #[derive(Accounts)]
+ pub struct SwapTokens<'info> {
++    pub fee_destination: UncheckedAccount<'info>,
+     #[account(mut)]
+     pub user: Signer<'info>,
+ }

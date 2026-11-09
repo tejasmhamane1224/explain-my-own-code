@@ -1,0 +1,8 @@
+diff --git a/programs/treasury/src/lib.rs b/programs/treasury/src/lib.rs
+--- a/programs/treasury/src/lib.rs
++++ b/programs/treasury/src/lib.rs
+@@ -80,6 +80,7 @@
+ pub fn payout(ctx: Context<Payout>) -> Result<()> {
++    invoke_signed(&ix, &accounts, &[&[b"treasury", authority.as_ref()]])?;
+     Ok(())
+ }

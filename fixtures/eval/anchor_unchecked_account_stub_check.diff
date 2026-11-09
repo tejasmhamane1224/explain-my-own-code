@@ -1,0 +1,10 @@
+diff --git a/programs/staking/src/lib.rs b/programs/staking/src/lib.rs
+--- a/programs/staking/src/lib.rs
++++ b/programs/staking/src/lib.rs
+@@ -32,6 +32,8 @@
+ #[derive(Accounts)]
+ pub struct ClaimRewards<'info> {
++    /// CHECK: todo
++    pub reward_pool: UncheckedAccount<'info>,
+     pub user: Signer<'info>,
+ }

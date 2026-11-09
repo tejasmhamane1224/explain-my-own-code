@@ -1,0 +1,9 @@
+diff --git a/programs/swap/src/lib.rs b/programs/swap/src/lib.rs
+--- a/programs/swap/src/lib.rs
++++ b/programs/swap/src/lib.rs
+@@ -62,6 +62,7 @@
+ #[derive(Accounts)]
+ pub struct SwapTokens<'info> {
++    pub token_program: AccountInfo<'info>,
+     pub authority: Signer<'info>,
+ }

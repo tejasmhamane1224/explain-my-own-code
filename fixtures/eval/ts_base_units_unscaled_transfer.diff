@@ -1,0 +1,7 @@
+diff --git a/src/token/transfer.ts b/src/token/transfer.ts
+--- a/src/token/transfer.ts
++++ b/src/token/transfer.ts
+@@ -16,6 +16,7 @@
+ export function sendTokens(from: PublicKey, to: PublicKey, auth: PublicKey, amount: number) {
++    return createTransferInstruction(from, to, auth, amount);
+ }

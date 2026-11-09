@@ -20,6 +20,7 @@ from emc import __version__
 from emc.config import load_config
 from emc.detect import get_taxonomy, run_detector_pipeline
 from emc.doctor import render_doctor_report, run_doctor_checks
+from emc.eval import EvalRunner
 from emc.gate import (
     evaluate_gate,
     format_commit_trailer,
@@ -1431,16 +1432,84 @@ def review_cmd(
 
 @app.command(name="eval")
 def eval_cmd(
+    ablation: Annotated[
+        bool,
+        typer.Option(
+            "--ablation", help="Run ablation comparison against naive single-prompt baseline."
+        ),
+    ] = False,
     baseline: Annotated[
         bool,
-        typer.Option("--baseline", help="Run ablation against naive single-prompt baseline."),
+        typer.Option(
+            "--baseline", help="Alias for --ablation: run ablation against naive baseline."
+        ),
     ] = False,
+    provider: Annotated[
+        Optional[str],
+        typer.Option("--provider", "-p", help="LLM Provider: fake, anthropic, or local."),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output machine-readable JSON metrics."),
+    ] = False,
+    output: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output", "-o", help="Write evaluation markdown report to path (e.g. docs/EVAL.md)."
+        ),
+    ] = None,
 ) -> None:
     """Run benchmark evaluation suite across seeded bug diffs."""
-    console.print(
-        "[yellow]Evaluation suite is scheduled for Stage 7 (Eval). "
-        "Run 'emc doctor' to verify test readiness.[/yellow]"
+    config_result = load_config()
+    cfg = config_result.config
+
+    prov_type = (
+        provider.lower()
+        if provider
+        else ("anthropic" if os.getenv("ANTHROPIC_API_KEY") else "fake")
     )
+    llm_prov: LLMProvider
+    if prov_type == "anthropic":
+        llm_prov = AnthropicProvider(
+            model=cfg.model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+    elif prov_type == "local":
+        llm_prov = LocalProvider(
+            model=cfg.model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+    else:
+        llm_prov = FakeProvider(
+            model=cfg.model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+
+    runner = EvalRunner(provider=llm_prov)
+    try:
+        report = runner.run_benchmark(include_ablation=ablation or baseline)
+    except Exception as exc:
+        if as_json:
+            typer.echo(json.dumps({"error": "eval_failed", "message": str(exc)}))
+        else:
+            console.print(f"[bold red]Evaluation failed:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        md_text = runner.generate_markdown_report(report)
+        output.write_text(md_text, encoding="utf-8")
+
+    if as_json:
+        typer.echo(report.model_dump_json(indent=2))
+    else:
+        runner.render_rich_report(report, console=console)
+        if output is not None:
+            console.print(f"\n[bold green]Report saved to {output}[/bold green]")
+
     raise typer.Exit(code=0)
 
 

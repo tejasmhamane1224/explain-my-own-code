@@ -1,0 +1,8 @@
+diff --git a/src/wallet/balance.ts b/src/wallet/balance.ts
+--- a/src/wallet/balance.ts
++++ b/src/wallet/balance.ts
+@@ -29,6 +29,7 @@
+ export function toLamports(solAmount: number): number {
++    const lamports = solAmount * 1000000;
+     return lamports;
+ }

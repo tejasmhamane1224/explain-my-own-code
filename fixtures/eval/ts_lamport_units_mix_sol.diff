@@ -1,0 +1,8 @@
+diff --git a/src/wallet/transfer.ts b/src/wallet/transfer.ts
+--- a/src/wallet/transfer.ts
++++ b/src/wallet/transfer.ts
+@@ -12,6 +12,7 @@
+ export function computeNewBalance(balanceLamports: number, solAmount: number): number {
++    const totalLamports = balanceLamports + solAmount;
+     return totalLamports;
+ }

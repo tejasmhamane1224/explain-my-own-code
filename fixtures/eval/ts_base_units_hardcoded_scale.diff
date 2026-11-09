@@ -1,0 +1,8 @@
+diff --git a/src/token/scale.ts b/src/token/scale.ts
+--- a/src/token/scale.ts
++++ b/src/token/scale.ts
+@@ -32,6 +32,7 @@
+ export function scaleTokenAmount(amount: number): number {
++    const scaled = amount * 100;
+     return scaled;
+ }

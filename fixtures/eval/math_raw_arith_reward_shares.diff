@@ -1,0 +1,9 @@
+diff --git a/programs/pool/src/lib.rs b/programs/pool/src/lib.rs
+--- a/programs/pool/src/lib.rs
++++ b/programs/pool/src/lib.rs
+@@ -66,6 +66,7 @@
+ pub fn add_liquidity(ctx: Context<AddLiquidity>, deposit_shares: u64) -> Result<()> {
+     let pool = &mut ctx.accounts.pool;
++    pool.shares = pool.shares + deposit_shares;
+     Ok(())
+ }

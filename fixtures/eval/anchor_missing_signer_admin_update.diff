@@ -1,0 +1,10 @@
+diff --git a/programs/admin/src/lib.rs b/programs/admin/src/lib.rs
+--- a/programs/admin/src/lib.rs
++++ b/programs/admin/src/lib.rs
+@@ -13,6 +13,7 @@
+ #[derive(Accounts)]
+ pub struct UpdateConfig<'info> {
++    pub admin: AccountInfo<'info>,
+     #[account(mut)]
+     pub config: Account<'info, Config>,
+ }

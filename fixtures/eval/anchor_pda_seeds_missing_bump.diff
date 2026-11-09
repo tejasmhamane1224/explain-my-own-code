@@ -1,0 +1,11 @@
+diff --git a/programs/escrow/src/lib.rs b/programs/escrow/src/lib.rs
+--- a/programs/escrow/src/lib.rs
++++ b/programs/escrow/src/lib.rs
+@@ -20,6 +20,7 @@
+ #[derive(Accounts)]
+ pub struct InitEscrow<'info> {
++    #[account(init, payer = user, seeds = [b"escrow", user.key().as_ref()])]
+     pub escrow: Account<'info, Escrow>,
+     #[account(mut)]
+     pub user: Signer<'info>,
+ }

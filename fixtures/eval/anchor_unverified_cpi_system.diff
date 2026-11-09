@@ -1,0 +1,9 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -70,6 +70,7 @@
+ #[derive(Accounts)]
+ pub struct CreateVault<'info> {
++    pub system_program: AccountInfo<'info>,
+     pub authority: Signer<'info>,
+ }

@@ -1,0 +1,10 @@
+diff --git a/src/wallet/validation.ts b/src/wallet/validation.ts
+--- a/src/wallet/validation.ts
++++ b/src/wallet/validation.ts
+@@ -26,6 +26,7 @@
+ export function isValidSolanaAddress(recipient: string): boolean {
++    if (recipient.length === 44) {
+         return true;
+     }
+     return false;
+ }

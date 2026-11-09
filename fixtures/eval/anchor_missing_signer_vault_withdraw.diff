@@ -1,0 +1,10 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -10,6 +10,7 @@
+ #[derive(Accounts)]
+ pub struct WithdrawFunds<'info> {
++    pub authority: AccountInfo<'info>,
+     #[account(mut)]
+     pub vault: Account<'info, Vault>,
+ }
