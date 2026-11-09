@@ -1,0 +1,9 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -40,6 +40,7 @@
+ pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
++    let new_balance = ctx.accounts.vault.balance.checked_add(amount).ok_or(ErrorCode::Overflow)?;
+     ctx.accounts.vault.balance = new_balance;
+     Ok(())
+ }

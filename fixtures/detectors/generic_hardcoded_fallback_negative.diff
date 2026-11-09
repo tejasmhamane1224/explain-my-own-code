@@ -1,0 +1,9 @@
+diff --git a/src/config.py b/src/config.py
+--- a/src/config.py
++++ b/src/config.py
+@@ -5,6 +5,9 @@
+ def get_secret_key():
++    secret = os.environ.get("ADMIN_PASSWORD")
++    if not secret:
++        raise ValueError("ADMIN_PASSWORD environment variable is missing")
+     return secret

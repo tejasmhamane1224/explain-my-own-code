@@ -71,3 +71,19 @@
 - **Status**: Accepted
 - **Context**: Attackers can embed indirect prompt injections in code comments, docstrings, or test variables designed to hijack the LLM evaluator, override grading, or leak system prompts.
 - **Decision**: Wrap all untrusted diff text inside bounded delimiters (`<<<UNTRUSTED_DIFF_PAYLOAD>>>`). Sanitize and escape any occurrence of payload boundary markers inside the diff. Frame all content explicitly as passive, inert data never to be executed or followed as instructions. Scan diffs for known prompt injection signatures.
+
+## ADR-010: Deterministic Smart Contract & Wallet Risk Detection Rules
+- **Status**: Accepted
+- **Context**: Pure LLM reasoning about high-risk Solana/Anchor and TS wallet diffs is probabilistic, slow, and prone to overlooking subtle security flaws (e.g. missing signer checks, unscaled token decimals, unchecked arithmetic).
+- **Decision**: Implement fast deterministic static analysis rules across 3 domain suites:
+  1. `rust_anchor`: 8 rules (missing Signer / has_one, UncheckedAccount without safety comment, unchecked arithmetic, PDA seeds bump verification, improper invoke_signed seeds, close/realloc configuration, remaining_accounts checks, unverified CPI program id).
+  2. `ts_wallet`: 4 rules (mixing SOL and lamports / float balance math, base units vs human units in token instructions, dynamic PublicKey address validation, hardcoded production RPC endpoints).
+  3. `generic`: 4 rules (security bypass flags, sensitive credential logging, insecure fallback credentials, empty catch/except error swallowing).
+  Every rule is backed by positive and negative fixtures verifying 100% true-positive recall and 0% false-positive rate.
+
+## ADR-011: Multi-Factor Diff Hunk Risk Ranking Engine
+- **Status**: Accepted
+- **Context**: A pull request or commit diff may contain dozens of hunks across documentation, tests, configuration, and core logic. Asking developers random questions dilutes attention from the most dangerous code lines.
+- **Decision**: Score and rank each diff hunk using a multi-factor risk formula:
+  `Risk Score = (Finding Severity Weights + (Additions * 0.1 + Deletions * 0.03)) * File Multiplier`
+  Where findings carry severity weights (CRITICAL: 10.0, HIGH: 5.0, MEDIUM: 2.5, LOW: 1.0), additions carry 3.3x more risk weight than deletions, and file importance applies domain multipliers (Smart Contracts: 1.8x, Wallet/Auth: 1.5x, Standard Code: 1.0x, Tests/Docs: 0.3x). Question planning prioritizes the highest-ranked hunks.

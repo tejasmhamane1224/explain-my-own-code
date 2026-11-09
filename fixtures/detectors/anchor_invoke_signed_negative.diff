@@ -1,0 +1,8 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -50,6 +50,7 @@
+ pub fn transfer_pda(ctx: Context<TransferPda>, bump: u8) -> Result<()> {
++    invoke_signed(&ix, &accounts, &[&[b"vault", ctx.accounts.authority.key().as_ref(), &[bump]]])?;
+     Ok(())
+ }

@@ -1,0 +1,7 @@
+diff --git a/src/login.py b/src/login.py
+--- a/src/login.py
++++ b/src/login.py
+@@ -12,6 +12,7 @@
+ def login(user, password):
++    logger.info(f"Login attempt received for user: {user}")
+     return verify(user, password)

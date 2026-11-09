@@ -1,0 +1,10 @@
+diff --git a/src/worker.py b/src/worker.py
+--- a/src/worker.py
++++ b/src/worker.py
+@@ -14,6 +14,9 @@
+ def process_batch(items):
+     try:
+         dispatch(items)
++    except Exception as exc:
++        logger.error(f"Batch processing failed: {exc}")
++        raise

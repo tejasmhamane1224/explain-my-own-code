@@ -1,0 +1,11 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -25,6 +25,7 @@
+ #[derive(Accounts)]
+ pub struct UpdateVault<'info> {
++    #[account(mut, realloc = 200)]
+     pub vault: Account<'info, Vault>,
+     #[account(mut)]
+     pub payer: Signer<'info>,
+ }

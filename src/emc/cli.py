@@ -16,6 +16,7 @@ from rich.table import Table
 
 from emc import __version__
 from emc.config import load_config
+from emc.detect import run_detector_pipeline
 from emc.doctor import render_doctor_report, run_doctor_checks
 from emc.ingest import (
     GitError,
@@ -202,6 +203,8 @@ def quiz_cmd(
         redactor = Redactor()
         redacted_ingest, findings = redactor.redact_ingest_result(ingest_result)
 
+        detector_report = run_detector_pipeline(redacted_ingest)
+
         summary_table = Table(title="Diff Ingestion & Redaction Summary", show_header=True)
         summary_table.add_column("Property", style="cyan")
         summary_table.add_column("Value", style="green")
@@ -226,6 +229,14 @@ def quiz_cmd(
             "Secrets Redacted",
             f"[bold red]{len(findings)}[/bold red]" if findings else "0",
         )
+        summary_table.add_row(
+            "Risks Detected",
+            (
+                f"[bold red]{detector_report.total_findings}[/bold red]"
+                if detector_report.total_findings
+                else "0"
+            ),
+        )
 
         console.print(summary_table)
 
@@ -247,6 +258,54 @@ def quiz_cmd(
                     f.replacement,
                 )
             console.print(secrets_table)
+
+        if detector_report.findings:
+            risk_table = Table(title="Detected Static Risk Findings", show_header=True)
+            risk_table.add_column("Severity", style="bold")
+            risk_table.add_column("Rule ID", style="cyan")
+            risk_table.add_column("Concept", style="magenta")
+            risk_table.add_column("Location", style="yellow")
+            risk_table.add_column("Description", style="white")
+
+            for rf in detector_report.findings:
+                sev_color = (
+                    "bold red" if rf.severity.value in ("CRITICAL", "HIGH") else "bold yellow"
+                )
+                loc = f"{rf.file_path}:{rf.line_number}" if rf.line_number else rf.file_path
+                risk_table.add_row(
+                    f"[{sev_color}]{rf.severity.value}[/{sev_color}]",
+                    rf.rule_id,
+                    rf.concept_id,
+                    loc,
+                    rf.title,
+                )
+            console.print(risk_table)
+
+        if detector_report.ranked_hunks:
+            hunk_table = Table(title="Ranked Diff Hunks by Risk Score", show_header=True)
+            hunk_table.add_column("Rank", justify="center", style="bold cyan")
+            hunk_table.add_column("File", style="white")
+            hunk_table.add_column("Range", style="yellow")
+            hunk_table.add_column("Risk Score", justify="right")
+            hunk_table.add_column("Triggered Rules", style="magenta")
+
+            for rh in detector_report.ranked_hunks:
+                rules_display = (
+                    ", ".join(rh.triggered_rule_ids) if rh.triggered_rule_ids else "[dim]none[/dim]"
+                )
+                score_color = (
+                    "bold red"
+                    if rh.risk_score >= 10.0
+                    else ("bold yellow" if rh.risk_score >= 5.0 else "green")
+                )
+                hunk_table.add_row(
+                    str(rh.rank),
+                    rh.file_path,
+                    rh.line_range,
+                    f"[{score_color}]{rh.risk_score:.2f}[/{score_color}]",
+                    rules_display,
+                )
+            console.print(hunk_table)
 
         injection_warnings = scan_for_injection_markers(redacted_ingest.raw_diff)
         if injection_warnings:
@@ -286,6 +345,130 @@ def quiz_cmd(
         "[yellow]Interactive quiz pipeline is scheduled for Stage 4 (Session + Grading). "
         "Run 'emc doctor' to verify system readiness.[/yellow]"
     )
+    raise typer.Exit(code=0)
+
+
+@app.command(name="detect")
+def detect_cmd(
+    staged: Annotated[bool, typer.Option("--staged", help="Analyze staged git changes.")] = False,
+    commit: Annotated[
+        Optional[str],
+        typer.Option("--commit", help="Analyze specific commit or range (e.g. HEAD~1)."),
+    ] = None,
+    stdin: Annotated[bool, typer.Option("--stdin", help="Read diff from standard input.")] = False,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Output risk report as machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Run deterministic static risk detectors and output findings and ranked hunks."""
+    try:
+        ingest_result = ingest_diff(staged=staged, commit=commit, use_stdin=stdin)
+    except GitError as exc:
+        console.print(f"[bold red]Git Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if ingest_result.is_empty and not ingest_result.raw_diff.strip():
+        console.print("[yellow]No diff changes found to analyze.[/yellow]")
+        raise typer.Exit(code=0)
+
+    redactor = Redactor()
+    redacted_ingest, _ = redactor.redact_ingest_result(ingest_result)
+    detector_report = run_detector_pipeline(redacted_ingest)
+
+    if as_json:
+        data = {
+            "total_findings": detector_report.total_findings,
+            "critical_count": detector_report.critical_count,
+            "high_count": detector_report.high_count,
+            "medium_count": detector_report.medium_count,
+            "low_count": detector_report.low_count,
+            "highest_risk_score": detector_report.highest_risk_score,
+            "findings": [f.to_dict() for f in detector_report.findings],
+            "ranked_hunks": [
+                {
+                    "rank": rh.rank,
+                    "file_path": rh.file_path,
+                    "line_range": rh.line_range,
+                    "risk_score": rh.risk_score,
+                    "rules": rh.triggered_rule_ids,
+                    "primary_concept": rh.primary_concept,
+                }
+                for rh in detector_report.ranked_hunks
+            ],
+        }
+        typer.echo(json.dumps(data, indent=2))
+        raise typer.Exit(code=0)
+
+    summary_table = Table(title="Diff Detection & Ranking Summary", show_header=True)
+    summary_table.add_column("Property", style="cyan")
+    summary_table.add_column("Value", style="green")
+
+    summary_table.add_row("Files Analyzed", str(ingest_result.total_files))
+    summary_table.add_row("Total Hunks", str(ingest_result.total_hunks))
+    summary_table.add_row(
+        "Additions / Deletions",
+        f"+{ingest_result.total_additions} / -{ingest_result.total_deletions}",
+    )
+    summary_table.add_row(
+        "Risks Detected",
+        (
+            f"[bold red]{detector_report.total_findings}[/bold red]"
+            if detector_report.total_findings
+            else "0"
+        ),
+    )
+    if detector_report.ranked_hunks:
+        summary_table.add_row(
+            "Highest Hunk Risk",
+            f"{detector_report.highest_risk_score:.2f}",
+        )
+    console.print(summary_table)
+
+    if detector_report.findings:
+        risk_table = Table(title="Detected Static Risk Findings", show_header=True)
+        risk_table.add_column("Severity", style="bold")
+        risk_table.add_column("Rule ID", style="cyan")
+        risk_table.add_column("Concept", style="magenta")
+        risk_table.add_column("Location", style="yellow")
+        risk_table.add_column("Description", style="white")
+
+        for rf in detector_report.findings:
+            sev_color = "bold red" if rf.severity.value in ("CRITICAL", "HIGH") else "bold yellow"
+            loc = f"{rf.file_path}:{rf.line_number}" if rf.line_number else rf.file_path
+            risk_table.add_row(
+                f"[{sev_color}]{rf.severity.value}[/{sev_color}]",
+                rf.rule_id,
+                rf.concept_id,
+                loc,
+                rf.title,
+            )
+        console.print(risk_table)
+
+    if detector_report.ranked_hunks:
+        hunk_table = Table(title="Ranked Diff Hunks by Risk Score", show_header=True)
+        hunk_table.add_column("Rank", justify="center", style="bold cyan")
+        hunk_table.add_column("File", style="white")
+        hunk_table.add_column("Range", style="yellow")
+        hunk_table.add_column("Risk Score", justify="right")
+        hunk_table.add_column("Triggered Rules", style="magenta")
+
+        for rh in detector_report.ranked_hunks:
+            rules_display = (
+                ", ".join(rh.triggered_rule_ids) if rh.triggered_rule_ids else "[dim]none[/dim]"
+            )
+            score_color = (
+                "bold red"
+                if rh.risk_score >= 10.0
+                else ("bold yellow" if rh.risk_score >= 5.0 else "green")
+            )
+            hunk_table.add_row(
+                str(rh.rank),
+                rh.file_path,
+                rh.line_range,
+                f"[{score_color}]{rh.risk_score:.2f}[/{score_color}]",
+                rules_display,
+            )
+        console.print(hunk_table)
     raise typer.Exit(code=0)
 
 

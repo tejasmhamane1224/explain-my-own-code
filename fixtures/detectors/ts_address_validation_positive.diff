@@ -1,0 +1,8 @@
+diff --git a/src/wallet.ts b/src/wallet.ts
+--- a/src/wallet.ts
++++ b/src/wallet.ts
+@@ -20,6 +20,7 @@
+ export function getAccountInfo(addressStr: string) {
++    const pubkey = new PublicKey(addressStr);
+     return connection.getAccountInfo(pubkey);
+ }

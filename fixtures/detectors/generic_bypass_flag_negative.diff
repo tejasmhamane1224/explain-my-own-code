@@ -1,0 +1,8 @@
+diff --git a/src/auth.py b/src/auth.py
+--- a/src/auth.py
++++ b/src/auth.py
+@@ -10,6 +10,7 @@
+ def authenticate_user(request):
++    is_authenticated = verify_jwt_signature(request.headers.get("Authorization"))
+     if is_authenticated:
+         return {"user": "admin"}

@@ -1,0 +1,7 @@
+diff --git a/src/token.ts b/src/token.ts
+--- a/src/token.ts
++++ b/src/token.ts
+@@ -15,6 +15,7 @@
+ export function buildTransfer(source: PublicKey, dest: PublicKey, owner: PublicKey, amount: number) {
++    return createTransferInstruction(source, dest, owner, 10.5);
+ }

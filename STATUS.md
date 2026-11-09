@@ -1,14 +1,14 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 1: Ingest + Redact + Injection Fixtures** -- **COMPLETED & HARDENED**
+**Stage 2: Detectors + Ranking (No LLM)** -- **COMPLETED & HARDENED**
 
 ---
 
 ## Stage Progress Checklist
 - [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton (`init`, `quiz`, `explain`, `report`, `review`, `eval`, `doctor`, `config`, `hook`), hardened `emc doctor` diagnostics with corrupted config detection & safe key masking, comprehensive unit tests (24 passed).
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
-- [ ] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump), TS wallet rules (lamports/decimals, base units, RPCs), generic rules, hunk ranking.
+- [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate (100 passed tests).
 - [ ] **Stage 3: LLM Layer + Generation + Validator**: Provider abstraction (Anthropic, Fake, Local), disk cache, question schemas, 4-step quality validator.
 - [ ] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), hint ladder, deterministic matchers, LLM rubric judge for free text.
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
@@ -19,42 +19,53 @@
 
 ---
 
-## Stage 1 Deliverables Summary
-1. **Diff Ingestion & Parsing (`src/emc/ingest/`)**:
-   - `models.py`: Pydantic models `DiffLine`, `DiffHunk`, `FileDiff`, and `IngestResult` tracking 1-indexed line numbers (`old_line_number`, `new_line_number`), line types (`+`, `-`, ` `), and hunk headers.
-   - `parser.py`: Robust unified diff parser supporting file additions, deletions, renames, binary diffs, quoted/space-separated file paths, and context lines.
-   - `ignore.py`: Path filtering utilizing `.emcignore` and default ignore rules (lockfiles, minified JS/CSS, images, build artifacts) via `pathspec`.
-   - `caps.py`: Diff size, single-file byte limit, and total hunk count limits preventing context blowouts, while preserving non-hunk file metadata (renames/mode changes).
-   - `git.py`: Orchestrator retrieving staged diffs (`git diff --cached`), commit diffs (`git diff <rev>`, supporting both root and regular commits via `git show`), and stdin streams with UTF-8 decoding and safe process execution (`shell=False`).
-   - `untrusted.py`: Untrusted diff framing inside bounded safety tags (`<<<UNTRUSTED_DIFF_PAYLOAD>>>`), escaping boundary collisions and scanning for prompt injection signatures.
-2. **Secret Redaction Engine (`src/emc/redact/`)**:
-   - `bip39_words.py`: Complete embedded 2048-word BIP-39 English wordlist.
-   - `models.py`: `RedactionFinding` and `RedactionResult` tracking secret categories, line numbers, character spans, and safe masked previews.
-   - `rules.py`: Scanners for:
-     1. Solana keypair byte arrays (32/64 items, JSON/Rust `vec!`/Go `[]byte{}`/TS formats, decimal or hex bytes).
-     2. Solana Base58 private keys (standalone 87-88 chars and assigned/prefixed 43-88 chars).
-     3. EVM / hex private keys (0x-prefixed 64 chars and assigned/prefixed raw hex).
-     4. BIP-39 seed phrases (12, 15, 18, 21, 24 words with case-insensitivity, backslash continuations, hyphen and comment boundary protection).
-     5. API tokens (Anthropic, OpenAI, Google/Gemini, HuggingFace, GitHub PAT, AWS Key/Secret, Stripe, Slack, Solana RPC).
-     6. `.env` sensitive key-value assignments.
-     7. Generic sensitive credential assignments with arbitrary naming prefixes.
-   - `engine.py`: Coordinates rule scanning, deduplication, reverse-index replacement, O(log N) line mapping via binary search, and `IngestResult` hunk updating.
-3. **Repository Fixtures**:
-   - `fixtures/secrets/`: Complete fixture set (`solana_keypair.json`, `solana_keys.ts`, `ethereum_wallet.rs`, `seed_phrases.txt`, `.env.example`, `secrets_staged.diff`) and `manifest.json`. **Recall is 100%**.
-   - `fixtures/injections/`: Adversarial prompt injection attacks (`system_override_comment.diff`, `jailbreak_variable.diff`, `markdown_breakout.diff`, `delimiter_collision.diff`, `exfiltration_url.diff`) and `manifest.json`.
-4. **CLI `--dry-run` Flow**:
-   - `emc quiz --dry-run`: Ingests diff, redacts secrets locally, renders Rich summary table and detected secrets table with masked previews, flags adversarial prompt injection warnings if detected, and prints the exact sanitized and encapsulated diff payload without making any network call.
-   - Supports `--staged`, `--commit <rev>`, and `--stdin`.
-5. **Test Suite**:
-   - 57 unit tests in `tests/test_cli.py`, `tests/test_doctor.py`, `tests/test_ingest.py`, `tests/test_redact.py`, `tests/test_injection.py`, and `tests/test_cli_dry_run.py`.
+## Stage 2 Deliverables Summary
+1. **Concepts Taxonomy Registry (`concepts.yaml` & `src/emc/detect/taxonomy.py`)**:
+   - 16 canonical concepts covering Solana/Anchor, TS wallet precision, and generic code smells.
+   - Pydantic models `ConceptDefinition`, `TaxonomyRegistry` with validation, lookup, and fallback resolution.
+2. **Deterministic Risk Detectors (`src/emc/detect/`)**:
+   - `models.py`: `RiskSeverity` (CRITICAL=10.0, HIGH=5.0, MEDIUM=2.5, LOW=1.0, INFO=0.5), `DetectionFinding`, `RankedHunk`, `DetectionReport`.
+   - `rust_anchor.py`: 8 Anchor smart contract rules:
+     1. `anchor.missing_signer`: Privileged authority accounts lacking `Signer<'info>` or `#[account(signer)]` / `has_one`.
+     2. `anchor.unchecked_account`: `UncheckedAccount` lacking safety doc comments (`/// CHECK:`).
+     3. `math.unchecked_arith`: Unchecked raw arithmetic (`+`, `-`, `*`, `/`) on balances/amounts instead of `checked_*` or `saturating_*`.
+     4. `anchor.pda_seeds`: PDA seeds constraints missing bump validation or using hardcoded bump literals.
+     5. `anchor.invoke_signed`: `invoke_signed` calls with invalid, empty, or un-bumped signer seed slices.
+     6. `anchor.realloc_close`: Realloc attributes missing payer/zero initialization, or manual lamport zeroing without close targets.
+     7. `anchor.remaining_accounts`: Iteration over `remaining_accounts` without signer or owner verification.
+     8. `anchor.unverified_cpi`: CPI program accounts typed as untyped `AccountInfo<'info>` instead of `Program<'info, T>`.
+   - `ts_wallet.py`: 4 TypeScript & Solana wallet rules:
+     9. `ts.lamport_units`: Mixing SOL and lamports, or float math on token balances without `BN`/`BigInt`.
+     10. `ts.base_units`: Unscaled human amounts passed into token instructions without mint decimal scaling.
+     11. `ts.address_validation`: `new PublicKey()` on dynamic input without `try/catch` or curve validation, and naive `.length === 44` checks.
+     12. `ts.hardcoded_rpc`: Hardcoded production or sensitive RPC endpoints (`api.mainnet-beta.solana.com`, `helius-rpc.com`, etc.).
+   - `generic.py`: 4 generic code smell rules:
+     13. `generic.bypass_flag`: Bypass flags (`skip_auth`, `no_verify`, `@ts-ignore`, `dangerouslySetInnerHTML`).
+     14. `generic.sensitive_log`: Logging passwords, private keys, secrets, or API tokens to console/logger.
+     15. `generic.hardcoded_fallback`: Insecure defaults like `process.env.SECRET || "default_secret"`.
+     16. `generic.empty_catch`: Swallowing exceptions with empty catch or except blocks.
+   - `engine.py`: Orchestrates detection across all files, validates taxonomy alignment, and deduplicates findings.
+3. **Hunk Risk Ranking Engine (`src/emc/detect/ranking.py`)**:
+   - Multi-factor risk formula: `(Severity Weights + (Additions * 0.1 + Deletions * 0.03)) * File Multiplier`.
+   - File importance weights: Smart contracts (1.8x), TS wallet/auth (1.5x), standard code (1.0x), docs/tests (0.3x).
+   - Assigns sequential 1-based ranks and resolves primary mastery concept per hunk.
+4. **Fixture Suite (`fixtures/detectors/`)**:
+   - Positive AND negative fixtures for all 16 rules (32 unified diff fixtures).
+   - `manifest.json`: Complete metadata matrix specifying rule ID, concept, fixture type, expected count, and description.
+   - **100% true-positive recall on positive fixtures and 0% false positives on negative fixtures**.
+5. **CLI Integration**:
+   - `emc detect`: Analyzes diffs from staged, commit range, or stdin, outputting summary, risk findings, and ranked hunks in Rich tables or machine-readable `--json`.
+   - `emc quiz --dry-run`: Integrated detector pipeline and ranked hunks into dry-run summary display.
+6. **Test Suite**:
+   - 100 passing unit tests across `tests/test_detectors.py`, `tests/test_ranking.py`, `tests/test_taxonomy.py`, `tests/test_cli_detect.py`, `tests/test_cli_dry_run.py`, `tests/test_ingest.py`, `tests/test_redact.py`, `tests/test_injection.py`, `tests/test_doctor.py`, and `tests/test_cli.py`.
 
 ---
 
 ## Verification Commands
-To verify Stage 1 independently, run from the `explain-my-own-code` directory:
+To verify Stage 2 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run unit test suite (57 passing tests)
+# 1. Run complete unit test suite (100 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -64,9 +75,15 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Try dry-run with the secrets fixture diff
-Get-Content fixtures/secrets/secrets_staged.diff | emc quiz --stdin --dry-run
+# 4. Run detector test matrix specifically
+pytest tests/test_detectors.py -v
 
-# 5. Try dry-run on current repository changes
-emc quiz --dry-run
+# 5. Try emc detect on a positive Anchor smart contract fixture
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc detect --stdin
+
+# 6. Try emc detect with JSON output
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc detect --stdin --json
+
+# 7. Try dry-run with static risk detection on stdin
+Get-Content fixtures/detectors/ts_hardcoded_rpc_positive.diff | emc quiz --stdin --dry-run
 ```

@@ -1,0 +1,8 @@
+diff --git a/src/connection.ts b/src/connection.ts
+--- a/src/connection.ts
++++ b/src/connection.ts
+@@ -5,6 +5,7 @@
+ export function getConnection() {
++    const endpoint = "https://api.mainnet-beta.solana.com";
+     return new Connection(endpoint, "confirmed");
+ }

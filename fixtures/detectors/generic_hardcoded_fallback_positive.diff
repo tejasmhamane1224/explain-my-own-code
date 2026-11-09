@@ -1,0 +1,7 @@
+diff --git a/src/config.py b/src/config.py
+--- a/src/config.py
++++ b/src/config.py
+@@ -5,6 +5,7 @@
+ def get_secret_key():
++    secret = os.environ.get("ADMIN_PASSWORD", "admin123")
+     return secret

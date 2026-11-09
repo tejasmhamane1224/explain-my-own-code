@@ -127,11 +127,16 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - `emc quiz --dry-run` flag outputting Rich summary table, detected secrets table with masked previews, and sanitized diff payload.
 - Comprehensive test suite (49 passing tests, clean ruff and mypy).
 
-### Stage 2: Detectors + Ranking (No LLM)
-- Solana/Anchor deterministic risk rules (missing signers, unchecked accounts, arithmetic, PDA seeds).
-- TypeScript wallet rules (lamports/decimal math, base units, address validation, RPC URLs).
-- Generic code smell detectors.
-- Risk-based hunk ranking algorithm.
+### Stage 2: Detectors + Ranking (No LLM) [COMPLETED]
+- Deterministic static risk rules across 3 domain suites:
+  - `rust_anchor`: 8 rules (missing Signer / has_one, UncheckedAccount without safety comment, unchecked arithmetic, PDA seeds bump verification, improper invoke_signed seeds, close/realloc configuration, remaining_accounts checks, unverified CPI program id).
+  - `ts_wallet`: 4 rules (mixing SOL and lamports / float balance math, base units vs human units in token instructions, dynamic PublicKey address validation, hardcoded production RPC endpoints).
+  - `generic`: 4 rules (security bypass flags, sensitive credential logging, insecure fallback credentials, empty catch/except error swallowing).
+- Concepts taxonomy loaded from `concepts.yaml` (`src/emc/concepts.yaml`) with 16 registered mastery concepts.
+- Multi-factor hunk risk ranking engine (`src/emc/detect/ranking.py`) combining rule severity weights, additions/deletions change volume, and file importance multipliers (Smart contracts 1.8x, Wallet/Auth 1.5x, Standard 1.0x, Docs/Tests 0.3x).
+- Positive and negative fixture suite (`fixtures/detectors/`) covering all 16 rules (32 unified diff fixtures) with 100% true-positive recall and 0% false positives.
+- `emc detect` and `emc quiz --dry-run` terminal integration rendering Detected Static Risk Findings and Ranked Diff Hunks Rich tables.
+- Comprehensive test suite (100 passing tests, clean ruff and strict mypy).
 
 ### Stage 3: LLM Layer + Generation + Validator
 - Provider interfaces: `AnthropicProvider`, `FakeProvider`, `LocalStubProvider`.

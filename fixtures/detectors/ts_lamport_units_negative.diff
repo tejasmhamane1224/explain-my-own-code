@@ -1,0 +1,8 @@
+diff --git a/src/wallet.ts b/src/wallet.ts
+--- a/src/wallet.ts
++++ b/src/wallet.ts
+@@ -10,6 +10,7 @@
+ export function deductFee(balance: bigint, feeLamports: bigint): bigint {
++    const remainingLamports = balance - (BigInt(1) * BigInt(LAMPORTS_PER_SOL));
+     return remainingLamports;
+ }

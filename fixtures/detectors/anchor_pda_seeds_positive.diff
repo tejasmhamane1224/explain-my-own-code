@@ -1,0 +1,11 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -20,6 +20,7 @@
+ #[derive(Accounts)]
+ pub struct InitVault<'info> {
++    #[account(init, payer = user, seeds = [b"vault", user.key().as_ref()])]
+     pub vault: Account<'info, Vault>,
+     #[account(mut)]
+     pub user: Signer<'info>,
+ }

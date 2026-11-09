@@ -1,0 +1,12 @@
+diff --git a/src/wallet.ts b/src/wallet.ts
+--- a/src/wallet.ts
++++ b/src/wallet.ts
+@@ -20,6 +20,10 @@
+ export function getAccountInfo(addressStr: string) {
++    try {
++        const pubkey = new PublicKey(addressStr);
++        return connection.getAccountInfo(pubkey);
++    } catch (err) {
++        throw new Error("Invalid address");
++    }
+ }

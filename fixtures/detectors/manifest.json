@@ -1,0 +1,294 @@
+{
+  "version": "1.0.0",
+  "description": "Detector test fixtures matrix verifying 100% true-positive recall and 0% false-positive rate across all 16 static rules.",
+  "fixtures": [
+    {
+      "name": "anchor_missing_signer_positive.diff",
+      "rule_id": "anchor.missing_signer",
+      "concept_id": "anchor.signer_check",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Anchor account struct with authority field lacking Signer or has_one constraint"
+    },
+    {
+      "name": "anchor_missing_signer_negative.diff",
+      "rule_id": "anchor.missing_signer",
+      "concept_id": "anchor.signer_check",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Anchor account struct properly enforcing authority: Signer<'info>"
+    },
+    {
+      "name": "anchor_unchecked_account_positive.diff",
+      "rule_id": "anchor.unchecked_account",
+      "concept_id": "anchor.account_types",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "UncheckedAccount without /// CHECK: safety doc comment"
+    },
+    {
+      "name": "anchor_unchecked_account_negative.diff",
+      "rule_id": "anchor.unchecked_account",
+      "concept_id": "anchor.account_types",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "UncheckedAccount with comprehensive /// CHECK: safety explanation"
+    },
+    {
+      "name": "math_unchecked_arith_positive.diff",
+      "rule_id": "math.unchecked_arith",
+      "concept_id": "math.checked_arith",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Unchecked addition on vault balance variable (+ operator)"
+    },
+    {
+      "name": "math_unchecked_arith_negative.diff",
+      "rule_id": "math.unchecked_arith",
+      "concept_id": "math.checked_arith",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Safe checked_add() arithmetic with error handling on balance"
+    },
+    {
+      "name": "anchor_pda_seeds_positive.diff",
+      "rule_id": "anchor.pda_seeds",
+      "concept_id": "anchor.pda_seeds",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "PDA account seeds constraint omitting bump attribute"
+    },
+    {
+      "name": "anchor_pda_seeds_negative.diff",
+      "rule_id": "anchor.pda_seeds",
+      "concept_id": "anchor.pda_seeds",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "PDA account seeds constraint including canonical bump attribute"
+    },
+    {
+      "name": "anchor_invoke_signed_positive.diff",
+      "rule_id": "anchor.invoke_signed",
+      "concept_id": "anchor.invoke_signed",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "invoke_signed call with empty signer seeds slice &[]"
+    },
+    {
+      "name": "anchor_invoke_signed_negative.diff",
+      "rule_id": "anchor.invoke_signed",
+      "concept_id": "anchor.invoke_signed",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "invoke_signed call with valid 3-level seed slice including bump"
+    },
+    {
+      "name": "anchor_realloc_close_positive.diff",
+      "rule_id": "anchor.realloc_close",
+      "concept_id": "anchor.realloc_close",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Account realloc attribute missing realloc::payer and realloc::zero"
+    },
+    {
+      "name": "anchor_realloc_close_negative.diff",
+      "rule_id": "anchor.realloc_close",
+      "concept_id": "anchor.realloc_close",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Account realloc attribute with valid payer and zero configurations"
+    },
+    {
+      "name": "anchor_remaining_accounts_positive.diff",
+      "rule_id": "anchor.remaining_accounts",
+      "concept_id": "anchor.remaining_accounts",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Iteration over remaining_accounts without is_signer or owner checks"
+    },
+    {
+      "name": "anchor_remaining_accounts_negative.diff",
+      "rule_id": "anchor.remaining_accounts",
+      "concept_id": "anchor.remaining_accounts",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Iteration over remaining_accounts with explicit is_signer and owner assertions"
+    },
+    {
+      "name": "anchor_unverified_cpi_positive.diff",
+      "rule_id": "anchor.unverified_cpi",
+      "concept_id": "anchor.cpi_checks",
+      "category": "rust_anchor",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "CPI target program declared as untyped AccountInfo<'info>"
+    },
+    {
+      "name": "anchor_unverified_cpi_negative.diff",
+      "rule_id": "anchor.unverified_cpi",
+      "concept_id": "anchor.cpi_checks",
+      "category": "rust_anchor",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "CPI target program declared with typed Program<'info, Token>"
+    },
+    {
+      "name": "ts_lamport_units_positive.diff",
+      "rule_id": "ts.lamport_units",
+      "concept_id": "ts.lamport_units",
+      "category": "ts_wallet",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Mixing SOL and lamport units via raw decimal subtraction"
+    },
+    {
+      "name": "ts_lamport_units_negative.diff",
+      "rule_id": "ts.lamport_units",
+      "concept_id": "ts.lamport_units",
+      "category": "ts_wallet",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Safe BigInt arithmetic scaled explicitly by LAMPORTS_PER_SOL"
+    },
+    {
+      "name": "ts_base_units_positive.diff",
+      "rule_id": "ts.base_units",
+      "concept_id": "ts.base_units",
+      "category": "ts_wallet",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Unscaled human decimal amount passed directly to createTransferInstruction"
+    },
+    {
+      "name": "ts_base_units_negative.diff",
+      "rule_id": "ts.base_units",
+      "concept_id": "ts.base_units",
+      "category": "ts_wallet",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Token transfer with amount scaled by mint decimals via 10 ** decimals"
+    },
+    {
+      "name": "ts_address_validation_positive.diff",
+      "rule_id": "ts.address_validation",
+      "concept_id": "ts.address_validation",
+      "category": "ts_wallet",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "new PublicKey(addressStr) instantiated on dynamic input without try/catch"
+    },
+    {
+      "name": "ts_address_validation_negative.diff",
+      "rule_id": "ts.address_validation",
+      "concept_id": "ts.address_validation",
+      "category": "ts_wallet",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "new PublicKey wrapped safely inside try/catch block"
+    },
+    {
+      "name": "ts_hardcoded_rpc_positive.diff",
+      "rule_id": "ts.hardcoded_rpc",
+      "concept_id": "ts.rpc_security",
+      "category": "ts_wallet",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Hardcoded api.mainnet-beta.solana.com endpoint URL in connection code"
+    },
+    {
+      "name": "ts_hardcoded_rpc_negative.diff",
+      "rule_id": "ts.hardcoded_rpc",
+      "concept_id": "ts.rpc_security",
+      "category": "ts_wallet",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Dynamic RPC connection loaded from process.env.SOLANA_RPC_URL"
+    },
+    {
+      "name": "generic_bypass_flag_positive.diff",
+      "rule_id": "generic.bypass_flag",
+      "concept_id": "generic.bypass_flags",
+      "category": "generic",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "skip_auth = True bypass flag added to authentication routine"
+    },
+    {
+      "name": "generic_bypass_flag_negative.diff",
+      "rule_id": "generic.bypass_flag",
+      "concept_id": "generic.bypass_flags",
+      "category": "generic",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Legitimate JWT signature verification check without bypasses"
+    },
+    {
+      "name": "generic_sensitive_log_positive.diff",
+      "rule_id": "generic.sensitive_log",
+      "concept_id": "generic.sensitive_exposure",
+      "category": "generic",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Printing password variable to stdout in debug log"
+    },
+    {
+      "name": "generic_sensitive_log_negative.diff",
+      "rule_id": "generic.sensitive_log",
+      "concept_id": "generic.sensitive_exposure",
+      "category": "generic",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Logging benign username and timestamp without leaking credentials"
+    },
+    {
+      "name": "generic_hardcoded_fallback_positive.diff",
+      "rule_id": "generic.hardcoded_fallback",
+      "concept_id": "generic.hardcoded_fallbacks",
+      "category": "generic",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "Hardcoded default fallback 'admin123' for missing ADMIN_PASSWORD"
+    },
+    {
+      "name": "generic_hardcoded_fallback_negative.diff",
+      "rule_id": "generic.hardcoded_fallback",
+      "concept_id": "generic.hardcoded_fallbacks",
+      "category": "generic",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Fail-fast exception raised when ADMIN_PASSWORD env variable is missing"
+    },
+    {
+      "name": "generic_empty_catch_positive.diff",
+      "rule_id": "generic.empty_catch",
+      "concept_id": "generic.silent_error_handling",
+      "category": "generic",
+      "fixture_type": "positive",
+      "expected_count": 1,
+      "description": "except Exception: pass silently swallowing runtime errors"
+    },
+    {
+      "name": "generic_empty_catch_negative.diff",
+      "rule_id": "generic.empty_catch",
+      "concept_id": "generic.silent_error_handling",
+      "category": "generic",
+      "fixture_type": "negative",
+      "expected_count": 0,
+      "description": "Properly logging exception and re-raising on unexpected error"
+    }
+  ]
+}

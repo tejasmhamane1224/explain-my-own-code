@@ -1,0 +1,9 @@
+diff --git a/programs/vault/src/lib.rs b/programs/vault/src/lib.rs
+--- a/programs/vault/src/lib.rs
++++ b/programs/vault/src/lib.rs
+@@ -15,5 +15,6 @@
+ #[derive(Accounts)]
+ pub struct SettleGame<'info> {
++    pub oracle_feed: UncheckedAccount<'info>,
+     pub authority: Signer<'info>,
+ }
