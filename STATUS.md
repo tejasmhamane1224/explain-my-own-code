@@ -142,9 +142,15 @@
    - Immediate post-review Leitner box progression and status overview table.
    - Full CLI support for `--limit`, `--concept`, `--provider`, `--answers`, and `--json`.
 5. **Quiz Session Ledger Integration (`src/emc/cli.py`)**:
-   - Automatically writes every question outcome from `emc quiz` runs directly into `.emc/ledger.jsonl`.
-6. **Acceptance Test Suite (`tests/test_ledger.py`)**:
-   - 17 comprehensive unit, concurrency, resilience, CLI, and end-to-end integration tests (236 total passing tests across the entire repository).
+   - Automatically writes question outcomes from `emc quiz` runs directly into `.emc/ledger.jsonl`.
+   - Protects against phantom attempts by filtering out aborted sessions (`[aborted]`).
+   - Resolves root repository `.emc/ledger.jsonl` even when invoked from subdirectories.
+6. **Cross-Process File Locking & Hardening (`src/emc/ledger/storage.py`)**:
+   - Portable OS-level interprocess locking (`fcntl` on POSIX, `msvcrt` on Windows) via dedicated `.lock` file.
+   - Grounded review question generator compliant with Stage 3 Quality Gate snippet validation.
+   - Guarded review replay completion state (`no_weak_concepts`) when all concepts are mastered or competent.
+7. **Acceptance Test Suite (`tests/test_ledger.py`)**:
+   - 24 comprehensive unit, concurrency, resilience, CLI, Quality Gate, and end-to-end integration tests (243 total passing tests across the entire repository).
 
 ---
 
@@ -152,7 +158,7 @@
 To verify Stage 5 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (236 passing tests)
+# 1. Run complete unit and acceptance test suite (243 passing tests)
 pytest
 
 # 2. Check code formatting and linting

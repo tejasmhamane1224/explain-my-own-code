@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -15,18 +16,19 @@ from emc.ledger.tracker import MasteryTracker
 def _get_box_style_and_markup(mastery: ConceptMastery) -> tuple[str, str]:
     """Return colored visual bar and status badge for a concept's Leitner box."""
     box = mastery.box
+    vis = escape(mastery.box_visual)
     if box == 1:
         if mastery.attempts > 0:
-            return "bold red", f"[bold red]{mastery.box_visual}[/bold red]"
-        return "dim", f"[dim]{mastery.box_visual}[/dim]"
+            return "bold red", f"[bold red]{vis}[/bold red]"
+        return "dim", f"[dim]{vis}[/dim]"
     elif box == 2:
-        return "bold yellow", f"[bold yellow]{mastery.box_visual}[/bold yellow]"
+        return "bold yellow", f"[bold yellow]{vis}[/bold yellow]"
     elif box == 3:
-        return "cyan", f"[cyan]{mastery.box_visual}[/cyan]"
+        return "cyan", f"[cyan]{vis}[/cyan]"
     elif box == 4:
-        return "blue", f"[blue]{mastery.box_visual}[/blue]"
+        return "blue", f"[blue]{vis}[/blue]"
     else:  # box == 5
-        return "bold green", f"[bold green]{mastery.box_visual}[/bold green]"
+        return "bold green", f"[bold green]{vis}[/bold green]"
 
 
 def _get_status_markup(mastery: ConceptMastery) -> str:
@@ -225,14 +227,23 @@ def render_report(
     console.print(concept_table)
 
     # 3. Actionable recommendation banner
-    weak_reviewed = [m for m in filtered if m.box <= 2 and m.attempts > 0]
-    if weak_reviewed:
+    if not filtered and weak_only:
         console.print(
             Panel(
-                f"[bold red]Found {len(weak_reviewed)} weak concept(s) "
-                "requiring reinforcement.[/bold red]\n"
-                "Run [bold cyan]emc review[/bold cyan] to replay targeted questions "
-                "and advance your mastery.",
-                border_style="red",
+                "[bold green]No weak concepts found for review! "
+                "All concepts are in Box 3 or higher.[/bold green]",
+                border_style="green",
             )
         )
+    else:
+        weak_reviewed = [m for m in filtered if m.box <= 2 and m.attempts > 0]
+        if weak_reviewed:
+            console.print(
+                Panel(
+                    f"[bold red]Found {len(weak_reviewed)} weak concept(s) "
+                    "requiring reinforcement.[/bold red]\n"
+                    "Run [bold cyan]emc review[/bold cyan] to replay targeted questions "
+                    "and advance your mastery.",
+                    border_style="red",
+                )
+            )

@@ -63,6 +63,11 @@ class MasteryTracker:
             )
 
         cur = self._masteries[concept_id]
+
+        # Ignore questions aborted before developer attempted them
+        if event.user_answer == "[aborted]":
+            return cur
+
         new_attempts = cur.attempts + 1
 
         if event.is_correct:
@@ -213,5 +218,6 @@ class MasteryTracker:
         """Instantiate tracker and replay all historical events from ledger file."""
         tracker = cls(taxonomy=taxonomy, demote_to_box_1=demote_to_box_1)
         events = read_events(ledger_path=ledger_path)
+        events.sort(key=lambda ev: ev.timestamp)
         tracker.process_events(events)
         return tracker

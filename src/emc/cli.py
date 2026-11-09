@@ -10,7 +10,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 from rich.console import Console
@@ -33,8 +33,10 @@ from emc.ledger import (
     MasteryTracker,
     append_events,
     generate_report_dict,
+    get_default_ledger_path,
     render_report,
     run_review_session,
+    select_review_concepts,
 )
 from emc.llm import (
     AnthropicProvider,
@@ -749,7 +751,8 @@ def quiz_cmd(
     breakdown: ScoreBreakdown = runner.run()
 
     # Record question outcomes to append-only ledger (.emc/ledger.jsonl)
-    if breakdown.results:
+    active_results = [res for res in breakdown.results if res.user_answer != "[aborted]"]
+    if active_results:
         session_id = f"quiz_{uuid.uuid4().hex[:8]}"
         ledger_events = [
             LedgerEvent(
@@ -770,9 +773,9 @@ def quiz_cmd(
                 question_id=res.question_id,
                 is_skipped=res.is_skipped,
             )
-            for res in breakdown.results
+            for res in active_results
         ]
-        append_events(ledger_events, ledger_path=config.ledger_path)
+        append_events(ledger_events, ledger_path=get_default_ledger_path())
 
     if as_json:
         typer.echo(json.dumps(breakdown.model_dump(), indent=2))
@@ -1152,9 +1155,29 @@ def report_cmd(
     ] = False,
 ) -> None:
     """Display comprehension mastery report across concept Leitner boxes."""
-    config_result = load_config()
-    cfg = config_result.config
-    resolved_ledger = ledger or cfg.ledger_path
+    _ = load_config()
+    resolved_ledger = ledger or get_default_ledger_path()
+
+    if category:
+        taxonomy = get_taxonomy()
+        valid_cats = {c.category.lower() for c in taxonomy.all_concepts()}
+        if category.lower() not in valid_cats:
+            cat_list = sorted(valid_cats)
+            if as_json:
+                typer.echo(
+                    json.dumps(
+                        {
+                            "error": "invalid_category",
+                            "message": f"Unknown category '{category}'. Valid: {cat_list}",
+                        }
+                    )
+                )
+            else:
+                console.print(
+                    f"[bold red]Error:[/bold red] Unknown category '{category}'. "
+                    f"Valid categories: {cat_list}"
+                )
+            raise typer.Exit(code=1)
 
     tracker = MasteryTracker.from_ledger(ledger_path=resolved_ledger)
 
@@ -1203,7 +1226,21 @@ def review_cmd(
     """Replay questions targeting previously missed or weak concepts."""
     config_result = load_config()
     cfg = config_result.config
-    resolved_ledger = ledger or cfg.ledger_path
+    resolved_ledger = ledger or get_default_ledger_path()
+
+    if limit <= 0:
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "invalid_limit",
+                        "message": "--limit must be greater than 0.",
+                    }
+                )
+            )
+        else:
+            console.print("[bold red]Error:[/bold red] --limit must be greater than 0.")
+        raise typer.Exit(code=1)
 
     # Scripted answers parsing
     scripted_inputs: list[str] | None = None
@@ -1237,7 +1274,25 @@ def review_cmd(
                 console.print(f"[bold red]Error:[/bold red] Unknown concept ID '{concept}'.")
             raise typer.Exit(code=1)
 
-    # CI / non-TTY safety guard
+    # Check if there are weak concepts available for review
+    tracker = MasteryTracker.from_ledger(ledger_path=resolved_ledger)
+    candidates = select_review_concepts(tracker=tracker, target_concept_id=concept, limit=limit)
+    if not candidates:
+        if as_json:
+            output_empty: dict[str, Any] = {
+                "status": "no_weak_concepts",
+                "score": ScoreBreakdown(passing_threshold=70.0).model_dump(),
+                "updated_mastery": [],
+            }
+            typer.echo(json.dumps(output_empty, indent=2))
+        else:
+            console.print(
+                "[bold green]No weak concepts found for review! "
+                "All concepts are mastered or competent.[/bold green]"
+            )
+        raise typer.Exit(code=0)
+
+    # CI / non-TTY safety guard (only triggers when questions need to be answered interactively)
     is_ci = os.getenv("CI", "").lower() in ("true", "1")
     if scripted_inputs is None and (not sys.stdin.isatty() or is_ci):
         if as_json:
@@ -1306,7 +1361,7 @@ def review_cmd(
         raise typer.Exit(code=1)
 
     if as_json:
-        output_data = {
+        output_data: dict[str, Any] = {
             "status": "completed" if breakdown.total_questions > 0 else "no_weak_concepts",
             "score": breakdown.model_dump(),
             "updated_mastery": [

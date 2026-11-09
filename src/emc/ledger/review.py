@@ -85,9 +85,22 @@ def build_review_question(concept_def: ConceptDefinition) -> Question:
                     resolved_path = parsed[0].new_path or parsed[0].old_path
                     if resolved_path:
                         file_path = resolved_path
-                    start_line = hunk.new_start
-                    end_line = hunk.new_start + len(hunk.lines) - 1
-                    snippet = hunk.content.strip()
+                    code_lines = [
+                        line_item.content
+                        for line_item in hunk.lines
+                        if line_item.line_type in ("+", " ")
+                    ]
+                    if not code_lines:
+                        code_lines = [
+                            line_item.content
+                            for line_item in hunk.lines
+                            if line_item.line_type == "-"
+                        ]
+                        start_line = hunk.old_start
+                    else:
+                        start_line = hunk.new_start
+                    end_line = start_line + len(code_lines) - 1 if code_lines else start_line
+                    snippet = "\n".join(code_lines)
             except Exception as exc:
                 logger.warning("Failed parsing fixture %s for review: %s", fixture_path, exc)
 
@@ -185,9 +198,8 @@ def select_review_concepts(
     if weak:
         return weak
 
-    # If no weak concepts exist (all Box >= 3), return concepts with lowest boxes
-    all_masteries = tracker.get_all_masteries(sort_by="box_asc")
-    return all_masteries[:limit]
+    # No weak concepts exist (all Box >= 3)
+    return []
 
 
 def run_review_session(
@@ -263,6 +275,8 @@ def run_review_session(
     updated_masteries: list[ConceptMastery] = []
 
     for res in breakdown.results:
+        if res.user_answer == "[aborted]":
+            continue
         ev = LedgerEvent(
             timestamp=datetime.now(timezone.utc).isoformat(),
             session_id=session_id,

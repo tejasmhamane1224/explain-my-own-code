@@ -199,3 +199,21 @@
   3. Weak Concept Prioritization: Order review candidates by failure severity: attempted Box 1 concepts with lowest pass rates first, followed by Box 2 developing concepts, followed by unreviewed concepts.
   4. Grounded Review Replay: Drive `emc review` sessions using verified detector diff fixtures and deterministic questions, automatically recording review session outcomes back into `.emc/ledger.jsonl` to advance developer mastery levels.
   5. Platform-Safe Visual Encoding: Adapt visual box progress bars (`[#####]` on cp1252 Windows consoles vs `[■■■□□]` on UTF-8 terminals) to prevent `UnicodeEncodeError` exceptions in legacy terminal environments.
+
+## ADR-023: Inter-Process File Locking, Aborted Session Isolation, Quality Gate Review Grounding, and Review Completion Guard
+- **Status**: Accepted
+- **Context**: In reviewing Stage 5 implementation, several critical edge cases and contract vulnerabilities were identified:
+  1. Process Concurrency: `_LEDGER_LOCK` only protected threads within the same Python process; independent CLI processes executing simultaneously could collide on append.
+  2. Aborted Session Demotions: When a quiz or review session was aborted before all questions were answered, unattempted questions (`[aborted]`) were appended to the ledger as failures and demoted concepts to Box 1.
+  3. Quality Gate Rejections on Review Questions: `build_review_question` used raw `hunk.content.strip()`, including diff prefix markers (`+`, `-`, ` `), causing review questions to fail `QuestionValidator` snippet grounding.
+  4. Mastered Concept Review Replay Bug: `select_review_concepts` fell back to `all_masteries[:limit]` when no weak concepts existed (all Box >= 3 or Box 5), causing `emc review` to quiz users on mastered concepts and rendering the `no_weak_concepts` completion state unreachable.
+  5. Subdirectory Path Drift: `quiz_cmd`, `report_cmd`, and `review_cmd` used relative `cfg.ledger_path` without resolving via `get_default_ledger_path()`, looking for ledger files inside subdirectories rather than repository root.
+  6. CLI Input Validation: `emc review --limit 0` or negative limits and `emc report --category bogus` were silently accepted without error feedback.
+- **Decision**:
+  1. Inter-Process File Locking: Implement `_interprocess_lock` on `.emc/ledger.jsonl.lock` supporting `msvcrt.locking` on Windows and `fcntl.flock` on POSIX, guaranteeing process-safe atomic appends and reads.
+  2. Aborted Attempt Filtering: Filter out `user_answer == "[aborted]"` from being written to `.emc/ledger.jsonl`, and ignore aborted events in `MasteryTracker.process_event`, protecting concept mastery.
+  3. Verbatim Snippet Grounding: In `build_review_question`, extract verbatim code lines `[line_item.content for line_item in hunk.lines if line_item.line_type in ('+', ' ')]` and compute exact line ranges, ensuring review questions pass Quality Gate grounding.
+  4. Safe Review Completion: In `select_review_concepts`, return an empty list when all concepts are competent/mastered (Box >= 3). Guard review execution before non-TTY bypass, reporting `"status": "no_weak_concepts"`.
+  5. Root Ledger Resolution: Resolve ledger paths via `get_default_ledger_path()` across all CLI commands.
+  6. Option Validation: Validate `--limit > 0` in `emc review` and `--category` against taxonomy in `emc report`.
+

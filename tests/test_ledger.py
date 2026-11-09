@@ -527,3 +527,201 @@ def test_end_to_end_quiz_to_report_to_review_integration(
     assert lamport_entry["box"] == 2
     assert lamport_entry["attempts"] == 1
     assert lamport_entry["pass_rate_percent"] == 100.0
+
+
+def test_ledger_binary_and_invalid_utf8_recovery(temp_ledger: Path) -> None:
+    """Verify ledger reading gracefully handles raw binary and non-UTF-8 bytes."""
+    valid_ev = LedgerEvent(
+        session_id="s_utf8",
+        concept_id="anchor.signer_check",
+        question_type="predict-output",
+        user_answer="A",
+        is_correct=True,
+    )
+    temp_ledger.parent.mkdir(parents=True, exist_ok=True)
+    temp_ledger.write_bytes(
+        b"\xff\xfe\x00\x00garbage_binary_data\x80\x81\n"
+        + valid_ev.model_dump_json().encode("utf-8")
+        + b"\n"
+        + b"\x00\x00\x00corrupt_nulls\xff\n"
+    )
+
+    events, corrupt_count = read_events_with_stats(ledger_path=temp_ledger)
+    assert len(events) == 1
+    assert events[0].concept_id == "anchor.signer_check"
+    assert corrupt_count == 2
+
+
+def test_aborted_session_does_not_corrupt_mastery(temp_ledger: Path) -> None:
+    """Verify aborted questions do not demote concepts or increment attempts."""
+    tracker = MasteryTracker()
+    cid = "anchor.signer_check"
+
+    # Advance to Box 3
+    tracker.process_event(
+        LedgerEvent(
+            session_id="s1", concept_id=cid, question_type="q", user_answer="A", is_correct=True
+        )
+    )
+    tracker.process_event(
+        LedgerEvent(
+            session_id="s2", concept_id=cid, question_type="q", user_answer="A", is_correct=True
+        )
+    )
+    assert tracker.get_mastery(cid).box == 3
+    assert tracker.get_mastery(cid).attempts == 2
+
+    # Process an aborted event (e.g. user quit session)
+    m_aborted = tracker.process_event(
+        LedgerEvent(
+            session_id="s3",
+            concept_id=cid,
+            question_type="q",
+            user_answer="[aborted]",
+            is_correct=False,
+            is_skipped=True,
+        )
+    )
+    # Mastery and attempts must remain completely unchanged
+    assert m_aborted.box == 3
+    assert m_aborted.attempts == 2
+    assert m_aborted.streak == 2
+
+
+def test_review_question_passes_quality_gate() -> None:
+    """Verify review questions built for taxonomy concepts pass QuestionValidator."""
+    from emc.ingest import IngestResult, parse_unified_diff
+    from emc.ledger.review import build_review_question
+    from emc.questions.validate import QuestionValidator
+
+    taxonomy = get_taxonomy()
+    concept = taxonomy.get("anchor.signer_check")
+    assert concept is not None
+
+    q = build_review_question(concept)
+    assert q.answer_key == "A"
+    assert len(q.snippet) > 0
+
+    fixture_path = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "detectors"
+        / "anchor_missing_signer_positive.diff"
+    )
+    raw_diff = fixture_path.read_text(encoding="utf-8")
+    parsed = parse_unified_diff(raw_diff)
+    ingest = IngestResult(raw_diff=raw_diff, files=parsed)
+
+    validator = QuestionValidator()
+    result = validator.validate(q, ingest)
+    assert result.passed, f"Validation failed with: {result.rejections}"
+
+
+def test_cli_review_all_mastered_reports_no_weak_concepts(
+    cli_runner: CliRunner, temp_ledger: Path
+) -> None:
+    """Verify emc review reports no weak concepts when all taxonomy concepts are Box >= 3."""
+    tracker = MasteryTracker()
+    # Advance every concept to Box 4
+    for c in tracker.taxonomy.all_concepts():
+        for i in range(3):
+            ev = LedgerEvent(
+                session_id=f"init_{c.id}_{i}",
+                concept_id=c.id,
+                question_type="q",
+                user_answer="A",
+                is_correct=True,
+            )
+            append_event(ev, ledger_path=temp_ledger)
+
+    # 1. Text mode
+    res_text = cli_runner.invoke(app, ["review", "--ledger", str(temp_ledger)])
+    assert res_text.exit_code == 0
+    assert "No weak concepts found for review" in res_text.stdout
+
+    # 2. JSON mode
+    res_json = cli_runner.invoke(app, ["review", "--ledger", str(temp_ledger), "--json"])
+    assert res_json.exit_code == 0
+    data = json.loads(res_json.stdout)
+    assert data["status"] == "no_weak_concepts"
+
+
+def test_cli_review_negative_or_zero_limit_rejected(cli_runner: CliRunner) -> None:
+    """Verify emc review --limit <= 0 is rejected with exit code 1."""
+    res_zero = cli_runner.invoke(app, ["review", "--limit", "0"])
+    assert res_zero.exit_code == 1
+    assert "--limit must be greater than 0" in res_zero.stdout
+
+    res_neg = cli_runner.invoke(app, ["review", "--limit", "-1", "--json"])
+    assert res_neg.exit_code == 1
+    data = json.loads(res_neg.stdout)
+    assert data["error"] == "invalid_limit"
+
+
+def test_cli_report_invalid_category_rejected(cli_runner: CliRunner) -> None:
+    """Verify emc report --category bogus is rejected with exit code 1."""
+    res = cli_runner.invoke(app, ["report", "--category", "completely_bogus_category"])
+    assert res.exit_code == 1
+    assert "Unknown category" in res.stdout
+
+    res_json = cli_runner.invoke(
+        app, ["report", "--category", "completely_bogus_category", "--json"]
+    )
+    assert res_json.exit_code == 1
+    data = json.loads(res_json.stdout)
+    assert data["error"] == "invalid_category"
+
+
+def test_end_to_end_quiz_failure_auto_targeted_by_review(
+    cli_runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: quiz fail -> report weak -> review auto-targets weak -> advances."""
+    monkeypatch.chdir(tmp_path)
+    custom_ledger = tmp_path / ".emc" / "ledger.jsonl"
+
+    fixture_path = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "detectors"
+        / "anchor_missing_signer_positive.diff"
+    )
+    diff_content = fixture_path.read_text(encoding="utf-8")
+
+    # Step 1: Run quiz with WRONG answers ("B,B,B") to fail anchor.signer_check
+    res_quiz = cli_runner.invoke(
+        app,
+        ["quiz", "--stdin", "--provider", "fake", "--answers", "B,B,B"],
+        input=diff_content,
+    )
+    assert res_quiz.exit_code == 0
+    assert custom_ledger.is_file()
+
+    # Step 2: emc report confirms anchor.signer_check is Weak (Box 1, pass_rate 0%)
+    res_rep = cli_runner.invoke(app, ["report", "--json"])
+    assert res_rep.exit_code == 0
+    data_rep = json.loads(res_rep.stdout)
+    signer_entry = next(c for c in data_rep["concepts"] if c["concept_id"] == "anchor.signer_check")
+    assert signer_entry["box"] == 1
+    assert signer_entry["attempts"] >= 1
+    assert signer_entry["pass_rate_percent"] == 0.0
+
+    # Step 3: Run review WITHOUT --concept and limit 1; should auto-pick the weak concept!
+    res_rev = cli_runner.invoke(
+        app,
+        ["review", "--limit", "1", "--answers", "A", "--json"],
+    )
+    assert res_rev.exit_code == 0
+    data_rev = json.loads(res_rev.stdout)
+    assert data_rev["status"] == "completed"
+    assert data_rev["updated_mastery"][0]["concept_id"] == "anchor.signer_check"
+    assert data_rev["updated_mastery"][0]["box"] == 2
+
+    # Step 4: Final report confirms promotion to Box 2 Developing
+    res_rep2 = cli_runner.invoke(app, ["report", "--json"])
+    assert res_rep2.exit_code == 0
+    data_rep2 = json.loads(res_rep2.stdout)
+    signer_entry2 = next(
+        c for c in data_rep2["concepts"] if c["concept_id"] == "anchor.signer_check"
+    )
+    assert signer_entry2["box"] == 2
+    assert signer_entry2["mastery_level"] == "Developing"
