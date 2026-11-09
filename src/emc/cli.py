@@ -7,6 +7,8 @@ import os
 import re
 import subprocess
 import sys
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -17,7 +19,7 @@ from rich.table import Table
 
 from emc import __version__
 from emc.config import load_config
-from emc.detect import run_detector_pipeline
+from emc.detect import get_taxonomy, run_detector_pipeline
 from emc.doctor import render_doctor_report, run_doctor_checks
 from emc.grade import ScoreBreakdown
 from emc.ingest import (
@@ -25,6 +27,14 @@ from emc.ingest import (
     encapsulate_diff,
     ingest_diff,
     scan_for_injection_markers,
+)
+from emc.ledger import (
+    LedgerEvent,
+    MasteryTracker,
+    append_events,
+    generate_report_dict,
+    render_report,
+    run_review_session,
 )
 from emc.llm import (
     AnthropicProvider,
@@ -738,6 +748,32 @@ def quiz_cmd(
     )
     breakdown: ScoreBreakdown = runner.run()
 
+    # Record question outcomes to append-only ledger (.emc/ledger.jsonl)
+    if breakdown.results:
+        session_id = f"quiz_{uuid.uuid4().hex[:8]}"
+        ledger_events = [
+            LedgerEvent(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                session_id=session_id,
+                diff_hash=diff_hash,
+                concept_id=res.concept_id,
+                question_type=(
+                    res.question_type.value
+                    if hasattr(res.question_type, "value")
+                    else str(res.question_type)
+                ),
+                user_answer=res.user_answer,
+                is_correct=res.is_correct,
+                hints_used=res.hints_used,
+                points_awarded=res.points_awarded,
+                max_points=res.max_points,
+                question_id=res.question_id,
+                is_skipped=res.is_skipped,
+            )
+            for res in breakdown.results
+        ]
+        append_events(ledger_events, ledger_path=config.ledger_path)
+
     if as_json:
         typer.echo(json.dumps(breakdown.model_dump(), indent=2))
 
@@ -1097,22 +1133,196 @@ def explain_cmd(
 
 
 @app.command(name="report")
-def report_cmd() -> None:
+def report_cmd(
+    ledger: Annotated[
+        Optional[Path],
+        typer.Option("--ledger", help="Path to custom ledger.jsonl file."),
+    ] = None,
+    weak_only: Annotated[
+        bool,
+        typer.Option("--weak-only", help="Filter report to only show weak concepts (Box 1 & 2)."),
+    ] = False,
+    category: Annotated[
+        Optional[str],
+        typer.Option("--category", help="Filter report by taxonomy category."),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output mastery report as machine-readable JSON."),
+    ] = False,
+) -> None:
     """Display comprehension mastery report across concept Leitner boxes."""
-    console.print(
-        "[yellow]Mastery reporting is scheduled for Stage 5 (Ledger + Mastery). "
-        "Run 'emc doctor' to check local state.[/yellow]"
-    )
+    config_result = load_config()
+    cfg = config_result.config
+    resolved_ledger = ledger or cfg.ledger_path
+
+    tracker = MasteryTracker.from_ledger(ledger_path=resolved_ledger)
+
+    if as_json:
+        report_data = generate_report_dict(tracker, weak_only=weak_only, category=category)
+        typer.echo(json.dumps(report_data, indent=2))
+    else:
+        render_report(tracker, console=console, weak_only=weak_only, category=category)
     raise typer.Exit(code=0)
 
 
 @app.command(name="review")
-def review_cmd() -> None:
+def review_cmd(
+    limit: Annotated[
+        int,
+        typer.Option("--limit", "-n", help="Max number of weak concepts to review in session."),
+    ] = 3,
+    concept: Annotated[
+        Optional[str],
+        typer.Option("--concept", "-c", help="Target a specific concept ID for review."),
+    ] = None,
+    provider: Annotated[
+        Optional[str],
+        typer.Option("--provider", help="LLM provider: 'anthropic', 'fake', or 'local'."),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", help="Model name identifier."),
+    ] = None,
+    answers: Annotated[
+        Optional[str],
+        typer.Option(
+            "--answers",
+            help="Comma-separated scripted answers for automated/testing sessions.",
+        ),
+    ] = None,
+    ledger: Annotated[
+        Optional[Path],
+        typer.Option("--ledger", help="Path to custom ledger.jsonl file."),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output review session results as machine-readable JSON."),
+    ] = False,
+) -> None:
     """Replay questions targeting previously missed or weak concepts."""
-    console.print(
-        "[yellow]Concept review session is scheduled for Stage 5 (Ledger + Mastery). "
-        "Run 'emc doctor' to check local state.[/yellow]"
+    config_result = load_config()
+    cfg = config_result.config
+    resolved_ledger = ledger or cfg.ledger_path
+
+    # Scripted answers parsing
+    scripted_inputs: list[str] | None = None
+    if answers is not None:
+        if "\n" in answers:
+            scripted_inputs = [line.strip() for line in answers.splitlines() if line.strip()]
+        else:
+            try:
+                import csv
+
+                reader = csv.reader([answers], skipinitialspace=True)
+                items = next(reader)
+                scripted_inputs = [item.strip() for item in items if item.strip()]
+            except Exception:
+                scripted_inputs = [a.strip() for a in re.split(r"[,\n]", answers) if a.strip()]
+
+    # Validate target concept if specified
+    if concept:
+        taxonomy = get_taxonomy()
+        if not taxonomy.contains(concept):
+            if as_json:
+                typer.echo(
+                    json.dumps(
+                        {
+                            "error": "invalid_concept",
+                            "message": f"Unknown concept ID '{concept}'.",
+                        }
+                    )
+                )
+            else:
+                console.print(f"[bold red]Error:[/bold red] Unknown concept ID '{concept}'.")
+            raise typer.Exit(code=1)
+
+    # CI / non-TTY safety guard
+    is_ci = os.getenv("CI", "").lower() in ("true", "1")
+    if scripted_inputs is None and (not sys.stdin.isatty() or is_ci):
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "skipped",
+                        "reason": "non_interactive_ci",
+                        "message": (
+                            "Non-interactive terminal or CI environment detected. "
+                            "Skipping review session."
+                        ),
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print(
+                "[dim]Non-interactive terminal or CI environment detected. "
+                "Skipping review session.[/dim]"
+            )
+        raise typer.Exit(code=0)
+
+    # Provider setup
+    prov_type = (
+        provider.lower()
+        if provider
+        else ("anthropic" if os.getenv("ANTHROPIC_API_KEY") else "fake")
     )
+    resolved_model = model or cfg.model
+    llm_prov: LLMProvider
+    if prov_type == "anthropic":
+        llm_prov = AnthropicProvider(
+            model=resolved_model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+    elif prov_type == "local":
+        llm_prov = LocalProvider(
+            model=resolved_model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+    else:
+        llm_prov = FakeProvider(
+            model=resolved_model,
+            max_cost_dollars=cfg.max_cost_dollars,
+            token_budget=cfg.token_budget,
+        )
+
+    try:
+        breakdown, updated_masteries = run_review_session(
+            target_concept_id=concept,
+            limit=limit,
+            provider=llm_prov,
+            scripted_inputs=scripted_inputs,
+            console=console,
+            ledger_path=resolved_ledger,
+            as_json=as_json,
+        )
+    except ValueError as exc:
+        if as_json:
+            typer.echo(json.dumps({"error": "invalid_concept", "message": str(exc)}))
+        else:
+            console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if as_json:
+        output_data = {
+            "status": "completed" if breakdown.total_questions > 0 else "no_weak_concepts",
+            "score": breakdown.model_dump(),
+            "updated_mastery": [
+                {
+                    "concept_id": um.concept_id,
+                    "name": um.name,
+                    "box": um.box,
+                    "attempts": um.attempts,
+                    "pass_rate_percent": um.pass_rate,
+                    "mastery_level": um.mastery_level.value,
+                }
+                for um in updated_masteries
+            ],
+        }
+        typer.echo(json.dumps(output_data, indent=2))
+
     raise typer.Exit(code=0)
 
 

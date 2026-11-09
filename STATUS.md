@@ -1,7 +1,7 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 4: Session + Grading** -- **COMPLETED & HARDENED**
+**Stage 5: Ledger + Mastery + Report/Review** -- **COMPLETED & VERIFIED**
 
 ---
 
@@ -11,7 +11,7 @@
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
 - [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (177 passed tests).
 - [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers with disambiguation, LLM rubric judge for free-text explain-back questions with offline keyword fallback and prompt injection defenses, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (219 passed tests).
-- [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
+- [x] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl` append-only storage, Leitner 5-box spaced repetition mastery tracker, automatic quiz session recording, Rich comprehension report tables & JSON export, targeted review replay engine with immediate box progression (236 passed tests).
 - [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
 - [ ] **Stage 7: Evaluation Suite (`emc eval`)**: 30+ seeded diffs (20 Anchor, 10 TS), ablation vs naive single-prompt baseline, `docs/EVAL.md`.
 - [ ] **Stage 8: Documentation & Security Hardening**: Comprehensive README with honest competitor matrix, threat model, `SECURITY.md`, `CONTRIBUTING.md`.
@@ -120,11 +120,39 @@
 
 ---
 
+## Stage 5 Deliverables Summary
+1. **Append-Only Event Ledger Storage (`src/emc/ledger/storage.py` & `src/emc/ledger/models.py`)**:
+   - `LedgerEvent` schema capturing: `timestamp`, `session_id`, `diff_hash`, `concept_id`, `question_type`, `user_answer`, `is_correct`, `hints_used`, `points_awarded`, `max_points`, `question_id`, `is_skipped`.
+   - Thread-safe append-only persistence under `.emc/ledger.jsonl` with in-process `threading.Lock()` concurrency protection.
+   - Resilient corrupt-line recovery skipping malformed JSON and schema violations without discarding valid records.
+2. **Leitner 5-Box Mastery Tracker (`src/emc/ledger/tracker.py`)**:
+   - 5 Progressive mastery boxes: Box 1 (Weak/Novice) to Box 5 (Mastered).
+   - Progression rules: correct answers advance box (capped at 5) and increment streaks; incorrect answers demote to Box 1 and reset streaks.
+   - Comprehensive concept metrics: attempts, correct count, streak, pass rate %, last reviewed timestamp, mastery level.
+   - Full baseline mapping against canonical 16-concept taxonomy in `concepts.yaml`.
+3. **Comprehension Mastery Reporting (`emc report` & `src/emc/ledger/report.py`)**:
+   - Rich terminal dashboard with developer overview metrics (total attempts, accuracy %, mastered count, active concepts).
+   - Per-concept table featuring encoding-safe visual Leitner box indicators (`[#####]` on Windows cp1252, `[■■■□□]` on UTF-8), attempts, pass rate %, streak, and status badges.
+   - Prominent actionable warning panels highlighting weak concepts requiring reinforcement.
+   - Complete machine-readable `--json` export and `--weak-only` / `--category` filtering.
+4. **Targeted Review Replay Engine (`emc review` & `src/emc/ledger/review.py`)**:
+   - Automatically prioritizes weak concepts (failed Box 1 concepts with lowest pass rates, then Box 2 developing concepts).
+   - Generates grounded review questions utilizing authentic detector fixtures and taxonomy definitions.
+   - Interactive terminal or scripted `--answers` session updating `.emc/ledger.jsonl` upon completion.
+   - Immediate post-review Leitner box progression and status overview table.
+   - Full CLI support for `--limit`, `--concept`, `--provider`, `--answers`, and `--json`.
+5. **Quiz Session Ledger Integration (`src/emc/cli.py`)**:
+   - Automatically writes every question outcome from `emc quiz` runs directly into `.emc/ledger.jsonl`.
+6. **Acceptance Test Suite (`tests/test_ledger.py`)**:
+   - 17 comprehensive unit, concurrency, resilience, CLI, and end-to-end integration tests (236 total passing tests across the entire repository).
+
+---
+
 ## Verification Commands
-To verify Stage 4 independently, run from the `explain-my-own-code` directory:
+To verify Stage 5 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (219 passing tests)
+# 1. Run complete unit and acceptance test suite (236 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -134,15 +162,19 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Run Stage 4 session and grading tests specifically
-pytest tests/test_session.py tests/test_grade.py -v
+# 4. Run Stage 5 ledger, mastery, report, and review tests specifically
+pytest tests/test_ledger.py -v
 
-# 5. Run scripted comprehension quiz end-to-end on positive Anchor fixture
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "A,A,A"
+# 5. Display comprehension mastery overview table
+python -m emc.cli report
 
-# 6. Run scripted quiz with hint ladder usage (-25% penalty)
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "H,A,A,A"
+# 6. Display mastery overview in machine-readable JSON
+python -m emc.cli report --json
 
-# 7. Run scripted quiz with machine-readable JSON output
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --provider fake --answers "A,A,A" --json
+# 7. Run targeted spaced repetition review on weak concept
+python -m emc.cli review --concept math.checked_arith --answers "A"
+
+# 8. Run targeted review with machine-readable JSON output
+python -m emc.cli review --concept math.checked_arith --answers "A" --json
 ```
+

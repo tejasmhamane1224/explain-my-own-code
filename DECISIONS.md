@@ -182,6 +182,20 @@
   4. Spot-the-bug Choice Index Protection: Treat numbers within `1..len(choices)` as choice selections, preventing fallthrough into line number matching.
   5. CLI JSON Contract: Guarantee valid JSON payloads on all exit paths when `--json` is enabled, and enforce `skip_allowed = false` configuration.
 
+## ADR-021: Append-Only Event Ledger (.emc/ledger.jsonl) with Resilient Corrupted-Line Recovery
+- **Status**: Accepted
+- **Context**: Comprehension quiz outcomes must be tracked across git commits and developer sessions to model understanding over time. A relational database introduces heavy dependencies, binary file merge conflicts in git, and schema migration complexity. Furthermore, ledger files can become corrupted due to interrupted writes, external edits, or invalid JSON.
+- **Decision**:
+  1. JSON Lines Format: Store historical attempt events in `.emc/ledger.jsonl`, where each line is an independent, append-only JSON serialization of `LedgerEvent` (`timestamp`, `session_id`, `diff_hash`, `concept_id`, `question_type`, `user_answer`, `is_correct`, `hints_used`, `points_awarded`, `max_points`).
+  2. In-Process Concurrency Control: Protect concurrent writes across threads via `threading.Lock()`, ensuring atomic line appends with immediate buffer flushing.
+  3. Resilient Error Recovery: When parsing `ledger.jsonl`, read line-by-line and gracefully skip empty lines, malformed JSON strings, and schema validation errors without crashing or discarding valid neighboring records.
 
-
-
+## ADR-022: Leitner 5-Box Concept Spaced Repetition Mastery Engine and Review Replay
+- **Status**: Accepted
+- **Context**: Developers need actionable visibility into knowledge gaps (e.g. repeated Anchor Signer oversights or TS unit scaling errors) and spaced repetition reinforcement targeting their weakest concepts.
+- **Decision**:
+  1. Leitner 5-Box Algorithm: Map concepts across 5 progressive mastery boxes (Box 1 = Weak/Novice, Box 2 = Developing, Box 3 = Competent, Box 4 = Proficient, Box 5 = Mastered). Correct answers advance the concept by 1 box (capped at 5); incorrect answers demote back to Box 1 and reset the current streak.
+  2. Canonical Taxonomy Alignment: Initialize baseline concepts from `concepts.yaml` via `TaxonomyRegistry`, ensuring all 16 security and code health rules are tracked even before their first attempt.
+  3. Weak Concept Prioritization: Order review candidates by failure severity: attempted Box 1 concepts with lowest pass rates first, followed by Box 2 developing concepts, followed by unreviewed concepts.
+  4. Grounded Review Replay: Drive `emc review` sessions using verified detector diff fixtures and deterministic questions, automatically recording review session outcomes back into `.emc/ledger.jsonl` to advance developer mastery levels.
+  5. Platform-Safe Visual Encoding: Adapt visual box progress bars (`[#####]` on cp1252 Windows consoles vs `[■■■□□]` on UTF-8 terminals) to prevent `UnicodeEncodeError` exceptions in legacy terminal environments.

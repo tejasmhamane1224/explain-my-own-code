@@ -158,10 +158,13 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - Non-interactive and CI environment detection with clean bypass on unscripted stdin.
 - End-to-end `emc quiz` integration across staged, commit, and stdin sources with `--answers` and `--json` support (207 passing tests).
 
-### Stage 5: Ledger + Mastery + Report/Review
-- `.emc/ledger.jsonl` storage with Leitner box algorithm.
-- `emc report`: Visual summary of concept masteries and weak areas.
-- `emc review`: Spaced repetition session targeting previously failed concepts.
+### Stage 5: Ledger + Mastery + Report/Review [COMPLETED]
+- Append-only event ledger stored in `.emc/ledger.jsonl` with thread-safe atomic file appending and resilient corrupt-line recovery.
+- Leitner 5-box concept mastery tracking (Box 1 Weak to Box 5 Mastered) with automatic box advancement on correct answers, demotion on incorrect answers, consecutive streaks, and pass-rate calculations aligned against `concepts.yaml`.
+- Automatic question outcome recording wired into `emc quiz` session completion.
+- `emc report`: Rich terminal overview of developer comprehension mastery, per-concept Leitner box status with encoding-safe progress bars (`[#####]`), actionable weak concept warnings, and machine-readable `--json` output.
+- `emc review`: Spaced repetition session generator and runner targeting weak concepts (Box 1 & 2), interactive or scripted (`--answers`), supporting `--limit`, `--concept`, `--provider`, and `--json` with immediate ledger updates.
+- 17 unit and acceptance tests covering ledger append/read, corrupt line handling, thread safety, Leitner box transitions, CLI report, CLI review, and full end-to-end integration (236 total passing tests).
 
 ### Stage 6: Modes, Gate, Hooks, CI-Safe Behavior
 - `.emc.toml` configuration parser.
