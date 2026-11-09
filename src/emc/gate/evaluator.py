@@ -51,6 +51,16 @@ def evaluate_gate(
             blocked=False,
         )
 
+    if breakdown.total_questions == 0:
+        return GateResult(
+            mode=mode,
+            passed=True,
+            exit_code=0,
+            message="No comprehension questions evaluated. Commit permitted.",
+            warning=False,
+            blocked=False,
+        )
+
     if breakdown.passed:
         return GateResult(
             mode=mode,

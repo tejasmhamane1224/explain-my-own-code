@@ -236,4 +236,23 @@
      - Uninstallation removes emc hooks and automatically restores the original foreign hook from backup if `.emc.bak` exists.
      - Idempotent: repeated `hook install` invocations detect existing emc markers and avoid duplicating scripts.
 
+## ADR-025: Hardening Gate, Trailer Deduplication, Git Comment Characters, Hooks Path, and Session Abort Isolation
+- **Status**: Accepted
+- **Context**: Code review revealed seven robustness and behavioral risks:
+  1. Trailer False Positives: Prefix matching on `Comprehension` matched regular commit body sentences (e.g. "Comprehension of this bug...").
+  2. Blank Line Leak in Trailers: Repeated trailer deduplication accumulated blank lines between trailers and trailing comments.
+  3. Git `core.commentChar`: Trailer placement hardcoded `#`, failing on repos with custom comment chars (`;`, `%`, etc.).
+  4. Git `core.hooksPath`: Hooks manager needed explicit verification under custom hook directories configured via git.
+  5. Foreign Hook Partial Actions: If `commit-msg` was foreign but `pre-commit` was not, uninstall/install could leave partially modified hooks.
+  6. Aborted Session Phantom Demotions: `runner.py` used `user_answer="quit"`, escaping `[aborted]` filters and causing unattempted questions to demote Leitner boxes.
+  7. Zero-Question Breakdown: Empty diffs evaluated against `evaluate_gate` risked blocking commits in `gate` mode.
+- **Decision**:
+  1. Explicit Trailer Colon: Extract prefix including colon (`prefix = f"{key}:"`), preventing false positives against prose.
+  2. Blank Line Trimming: Always trim trailing blank lines before and after trailer insertion.
+  3. Dynamic Comment Char: Detect `core.commentChar` via `git config --get core.commentChar` with fallback to `#`.
+  4. Contiguous Trailers: Append trailers directly after existing trailers without intervening blank lines, adhering to `git interpret-trailers`.
+  5. Upfront Foreign Hook Check: Validate all target hooks for foreign content upfront before mutating filesystem in `install_hooks` and `uninstall_hooks`.
+  6. Aborted Question Tagging: Tag unreached questions in aborted sessions with `user_answer="[aborted]"`, and guard against both `[aborted]` and `quit` in `MasteryTracker` and CLI ledger logging.
+  7. Zero-Question Pass: Allow 0-question breakdowns to pass cleanly in all gate modes.
+
 

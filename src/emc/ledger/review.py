@@ -275,7 +275,7 @@ def run_review_session(
     updated_masteries: list[ConceptMastery] = []
 
     for res in breakdown.results:
-        if res.user_answer == "[aborted]":
+        if res.user_answer in ("[aborted]", "quit"):
             continue
         ev = LedgerEvent(
             timestamp=datetime.now(timezone.utc).isoformat(),

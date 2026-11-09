@@ -214,3 +214,65 @@ def test_cli_hook_commit_msg_integration(
     res_noop = cli_runner.invoke(app, ["hook", "commit-msg", str(clean_msg)])
     assert res_noop.exit_code == 0
     assert clean_msg.read_text(encoding="utf-8") == "chore: bump deps\n"
+
+
+def test_core_hooks_path_configuration(temp_git_repo: Path) -> None:
+    """Verify git hooks discovery and operations respect custom core.hooksPath."""
+    custom_hooks = temp_git_repo / ".custom_hooks"
+    custom_hooks.mkdir()
+
+    # Set git config core.hooksPath
+    subprocess.run(
+        ["git", "config", "core.hooksPath", ".custom_hooks"],
+        cwd=str(temp_git_repo),
+        check=True,
+    )
+
+    # 1. Discover hooks dir
+    hooks_dir = get_git_hooks_dir(start_path=temp_git_repo)
+    assert hooks_dir is not None
+    assert hooks_dir.resolve() == custom_hooks.resolve()
+
+    # 2. Install hooks into custom directory
+    install_res = install_hooks(start_path=temp_git_repo)
+    assert install_res.hooks_dir.resolve() == custom_hooks.resolve()
+    assert (custom_hooks / "pre-commit").is_file()
+    assert (custom_hooks / "commit-msg").is_file()
+
+    # 3. Uninstall hooks from custom directory
+    uninstall_res = uninstall_hooks(start_path=temp_git_repo)
+    assert uninstall_res.pre_commit_removed is True
+    assert uninstall_res.commit_msg_removed is True
+    assert not (custom_hooks / "pre-commit").exists()
+    assert not (custom_hooks / "commit-msg").exists()
+
+
+def test_foreign_commit_msg_hook_protection(temp_git_repo: Path) -> None:
+    """Verify foreign commit-msg hook is protected without force, backed up and restored."""
+    hooks_dir = temp_git_repo / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    foreign_cm = hooks_dir / "commit-msg"
+    foreign_content = "#!/bin/sh\n# custom commit-msg validator\nexit 0\n"
+    foreign_cm.write_text(foreign_content, encoding="utf-8")
+
+    # 1. Install without force must raise ForeignHookError and leave file intact
+    with pytest.raises(ForeignHookError) as exc_info:
+        install_hooks(start_path=temp_git_repo, force=False, install_commit_msg=True)
+    assert "commit-msg hook already exists" in str(exc_info.value)
+    assert foreign_cm.read_text(encoding="utf-8") == foreign_content
+
+    # 2. Install with force backs up to commit-msg.emc.bak
+    res_force = install_hooks(start_path=temp_git_repo, force=True, install_commit_msg=True)
+    assert res_force.commit_msg_status == "overwritten"
+    bak_file = hooks_dir / "commit-msg.emc.bak"
+    assert bak_file.is_file()
+    assert bak_file.read_text(encoding="utf-8") == foreign_content
+    assert foreign_cm.read_text(encoding="utf-8") == COMMIT_MSG_SCRIPT
+
+    # 3. Uninstall without force would refuse if it were foreign, but it's emc now
+    # It must restore foreign hook from backup!
+    un_res = uninstall_hooks(start_path=temp_git_repo)
+    assert un_res.commit_msg_removed is True
+    assert un_res.commit_msg_restored is True
+    assert foreign_cm.read_text(encoding="utf-8") == foreign_content
+    assert not bak_file.exists()

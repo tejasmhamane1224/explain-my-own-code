@@ -177,21 +177,26 @@
    - Detects `CI=true` or non-TTY stdin and skips with a clear message and exit 0 across all modes (`off`, `warn`, `gate`), preventing CI hangs.
    - Honors explicit scripted inputs (`--answers`) in CI to permit automated integration tests.
 5. **Acceptance Test Suite (`tests/test_gate.py` & `tests/test_hooks.py`)**:
-   - 22 comprehensive unit and integration acceptance tests (265 total passing tests across the entire repository):
+   - 30 comprehensive unit and integration acceptance tests (273 total passing tests across the entire repository):
      - `off` mode execution, ledger skip logging, and exit 0.
      - `warn` mode failing score displaying warning banner and exiting 0.
      - `warn` mode passing score exiting 0.
      - `gate` mode failing score displaying blocked error banner and exiting 1.
      - `gate` mode passing score exiting 0.
+     - Zero-question breakdown safe permit across gate and warn modes.
      - `--skip` flag enforcement (allowed vs disallowed by config) with ledger event audit verification.
      - CI / non-TTY environment behavior across all modes.
      - CI with scripted inputs honoring gate mode.
      - Commit trailer formatting across fraction, percentage, and detailed styles.
-     - Trailer injection with comment separation, deduplication, and aborted commit protection.
-     - Hooks directory discovery in standard repos, deep subdirectories, worktrees, and outside git.
-     - Hook installation, idempotency, foreign hook protection, backup and restore on uninstall.
+     - Trailer injection with custom git `core.commentChar` (`;`, `%`, etc.).
+     - Trailer deduplication without blank line accumulation across repeated updates.
+     - Trailer prefix false-positive protection against body prose starting with "Comprehension".
+     - Contiguous git trailer blocks compliant with `git interpret-trailers`.
+     - Hooks directory discovery in standard repos, deep subdirectories, worktrees, custom `core.hooksPath`, and outside git.
+     - Hook installation, idempotency, foreign hook protection for both `pre-commit` and `commit-msg`, backup and restore on uninstall.
      - Worktree hooks installation and lifecycle.
      - CLI `emc hook commit-msg` integration with staged and explicit trailers.
+     - Aborted quiz session isolation preventing unattempted questions from demoting Leitner boxes.
 
 ---
 
@@ -199,7 +204,7 @@
 To verify Stage 6 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (265 passing tests)
+# 1. Run complete unit and acceptance test suite (273 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -209,7 +214,7 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Run Stage 6 gate and hooks tests specifically
+# 4. Run Stage 6 gate and hooks tests specifically (30 passing tests)
 pytest tests/test_gate.py tests/test_hooks.py -v
 
 # 5. Test hook installation in a test repo

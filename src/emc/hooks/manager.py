@@ -118,18 +118,32 @@ def install_hooks(
 
     target_hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. pre-commit hook
     pre_commit_file = target_hooks_dir / "pre-commit"
+    commit_msg_file = target_hooks_dir / "commit-msg"
+
+    # Upfront foreign hook validation before modifying any files
+    if not force:
+        if pre_commit_file.exists():
+            c = pre_commit_file.read_text(encoding="utf-8")
+            if "emc quiz" not in c:
+                raise ForeignHookError(
+                    "A pre-commit hook already exists. Use --force to overwrite, "
+                    "or append 'emc quiz --staged' manually."
+                )
+        if install_commit_msg and commit_msg_file.exists():
+            cm = commit_msg_file.read_text(encoding="utf-8")
+            if "emc hook commit-msg" not in cm:
+                raise ForeignHookError(
+                    "A commit-msg hook already exists. Use --force to overwrite, "
+                    "or append 'emc hook commit-msg \"$1\"' manually."
+                )
+
+    # 1. pre-commit hook
     pre_commit_status = "installed"
     if pre_commit_file.exists():
         content = pre_commit_file.read_text(encoding="utf-8")
         if "emc quiz" in content:
             pre_commit_status = "already_installed"
-        elif not force:
-            raise ForeignHookError(
-                "A pre-commit hook already exists. Use --force to overwrite, "
-                "or append 'emc quiz --staged' manually."
-            )
         else:
             # Back up foreign hook
             bak_file = target_hooks_dir / "pre-commit.emc.bak"
@@ -146,17 +160,11 @@ def install_hooks(
     # 2. commit-msg hook (optional)
     commit_msg_status = "skipped"
     if install_commit_msg:
-        commit_msg_file = target_hooks_dir / "commit-msg"
         commit_msg_status = "installed"
         if commit_msg_file.exists():
             cm_content = commit_msg_file.read_text(encoding="utf-8")
             if "emc hook commit-msg" in cm_content:
                 commit_msg_status = "already_installed"
-            elif not force:
-                raise ForeignHookError(
-                    "A commit-msg hook already exists. Use --force to overwrite, "
-                    "or append 'emc hook commit-msg \"$1\"' manually."
-                )
             else:
                 # Back up foreign commit-msg hook
                 cm_bak = target_hooks_dir / "commit-msg.emc.bak"
@@ -198,19 +206,28 @@ def uninstall_hooks(
             message="No hooks directory found.",
         )
 
+    pre_commit_file = target_hooks_dir / "pre-commit"
+    commit_msg_file = target_hooks_dir / "commit-msg"
+
+    # Upfront foreign hook validation before modifying any files
+    if not force:
+        if pre_commit_file.exists() and "emc" not in pre_commit_file.read_text(encoding="utf-8"):
+            raise ForeignHookError(
+                "Existing pre-commit hook does not appear to belong to emc. "
+                "Use --force to remove anyway."
+            )
+        if commit_msg_file.exists() and "emc" not in commit_msg_file.read_text(encoding="utf-8"):
+            raise ForeignHookError(
+                "Existing commit-msg hook does not appear to belong to emc. "
+                "Use --force to remove anyway."
+            )
+
     pre_commit_removed = False
     pre_commit_restored = False
     commit_msg_removed = False
     commit_msg_restored = False
 
-    pre_commit_file = target_hooks_dir / "pre-commit"
     if pre_commit_file.exists():
-        content = pre_commit_file.read_text(encoding="utf-8")
-        if "emc" not in content and not force:
-            raise ForeignHookError(
-                "Existing pre-commit hook does not appear to belong to emc. "
-                "Use --force to remove anyway."
-            )
         pre_commit_file.unlink()
         pre_commit_removed = True
 
@@ -226,23 +243,20 @@ def uninstall_hooks(
             bak.unlink()
             pre_commit_restored = True
 
-    commit_msg_file = target_hooks_dir / "commit-msg"
     if commit_msg_file.exists():
-        content = commit_msg_file.read_text(encoding="utf-8")
-        if "emc" in content or force:
-            commit_msg_file.unlink()
-            commit_msg_removed = True
+        commit_msg_file.unlink()
+        commit_msg_removed = True
 
-            cm_bak = target_hooks_dir / "commit-msg.emc.bak"
-            if cm_bak.exists():
-                cm_bak_content = cm_bak.read_text(encoding="utf-8")
-                commit_msg_file.write_text(cm_bak_content, encoding="utf-8")
-                try:
-                    commit_msg_file.chmod(0o755)
-                except Exception:
-                    pass
-                cm_bak.unlink()
-                commit_msg_restored = True
+        cm_bak = target_hooks_dir / "commit-msg.emc.bak"
+        if cm_bak.exists():
+            cm_bak_content = cm_bak.read_text(encoding="utf-8")
+            commit_msg_file.write_text(cm_bak_content, encoding="utf-8")
+            try:
+                commit_msg_file.chmod(0o755)
+            except Exception:
+                pass
+            cm_bak.unlink()
+            commit_msg_restored = True
 
     return HookUninstallResult(
         pre_commit_removed=pre_commit_removed,

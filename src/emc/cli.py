@@ -770,7 +770,9 @@ def quiz_cmd(
     breakdown: ScoreBreakdown = runner.run()
 
     # Record question outcomes to append-only ledger (.emc/ledger.jsonl)
-    active_results = [res for res in breakdown.results if res.user_answer != "[aborted]"]
+    active_results = [
+        res for res in breakdown.results if res.user_answer not in ("[aborted]", "quit")
+    ]
     if active_results:
         session_id = f"quiz_{uuid.uuid4().hex[:8]}"
         ledger_events = [

@@ -80,7 +80,7 @@ class MasteryTracker:
         cur = self._masteries[concept_id]
 
         # Ignore questions aborted before developer attempted them
-        if event.user_answer == "[aborted]":
+        if event.user_answer in ("[aborted]", "quit"):
             return cur
 
         new_attempts = cur.attempts + 1
