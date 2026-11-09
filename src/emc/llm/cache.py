@@ -129,7 +129,6 @@ class CachedLLMProvider(LLMProvider):
         **kwargs: Any,
     ) -> LLMResponse[str]:
         """Generate text with disk cache lookup."""
-        self.check_budget()
         active_diff_hash = diff_hash or self.diff_hash
 
         cached_entry = self.cache.get(active_diff_hash, prompt, self.model)
@@ -145,6 +144,7 @@ class CachedLLMProvider(LLMProvider):
                 raw_response=cached_entry,
             )
 
+        self.check_budget()
         response = self.provider.generate_text(prompt, system=system, **kwargs)
 
         self.cache.set(
@@ -169,31 +169,35 @@ class CachedLLMProvider(LLMProvider):
         **kwargs: Any,
     ) -> LLMResponse[T]:
         """Generate structured data with disk cache lookup."""
-        self.check_budget()
         active_diff_hash = diff_hash or self.diff_hash
 
         cached_entry = self.cache.get(active_diff_hash, prompt, self.model)
         if cached_entry is not None and cached_entry.get("structured") is not None:
             raw_struct = cached_entry["structured"]
-            structured_obj: T
-            if isinstance(raw_struct, schema):
-                structured_obj = raw_struct
-            elif isinstance(raw_struct, str):
-                structured_obj = schema.model_validate_json(raw_struct)
-            else:
-                structured_obj = schema.model_validate(raw_struct)
+            structured_obj: T | None = None
+            try:
+                if isinstance(raw_struct, schema):
+                    structured_obj = raw_struct
+                elif isinstance(raw_struct, str):
+                    structured_obj = schema.model_validate_json(raw_struct)
+                else:
+                    structured_obj = schema.model_validate(raw_struct)
+            except Exception:
+                structured_obj = None
 
-            usage_data = cached_entry.get("usage", {})
-            return LLMResponse(
-                content=cached_entry.get("content", ""),
-                structured=structured_obj,
-                usage=TokenUsage(**usage_data),
-                cost_usd=0.0,
-                model=self.model,
-                cached=True,
-                raw_response=cached_entry,
-            )
+            if structured_obj is not None:
+                usage_data = cached_entry.get("usage", {})
+                return LLMResponse(
+                    content=cached_entry.get("content", ""),
+                    structured=structured_obj,
+                    usage=TokenUsage(**usage_data),
+                    cost_usd=0.0,
+                    model=self.model,
+                    cached=True,
+                    raw_response=cached_entry,
+                )
 
+        self.check_budget()
         response = self.provider.generate_structured(prompt, schema=schema, system=system, **kwargs)
 
         struct_dump = (

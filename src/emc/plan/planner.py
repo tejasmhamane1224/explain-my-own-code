@@ -136,21 +136,31 @@ def create_question_plans(
             break
 
         file_path = ranked_hunk.file_path
-        start_line = ranked_hunk.hunk.new_start
-        end_line = ranked_hunk.hunk.new_start + max(1, ranked_hunk.hunk.new_lines) - 1
+        snippet_lines: list[str] = []
+        is_deletion = False
+
+        if ranked_hunk.hunk and ranked_hunk.hunk.lines:
+            for line_item in ranked_hunk.hunk.lines:
+                if line_item.line_type in ("+", " "):
+                    snippet_lines.append(line_item.content)
+            if not snippet_lines:
+                for line_item in ranked_hunk.hunk.lines:
+                    if line_item.line_type == "-":
+                        snippet_lines.append(line_item.content)
+                if snippet_lines:
+                    is_deletion = True
+
+        selected_lines = snippet_lines[:15]
+        start_line = ranked_hunk.hunk.old_start if is_deletion else ranked_hunk.hunk.new_start
+        end_line = start_line + len(selected_lines) - 1 if selected_lines else start_line
 
         range_key = (file_path, start_line, end_line)
         if range_key in seen_files_and_ranges:
             continue
         seen_files_and_ranges.add(range_key)
 
-        snippet_lines: list[str] = []
-        if ranked_hunk.hunk and ranked_hunk.hunk.lines:
-            for line_item in ranked_hunk.hunk.lines:
-                if line_item.line_type in ("+", " "):
-                    snippet_lines.append(line_item.content)
         snippet_text = (
-            "\n".join(snippet_lines[:15]) if snippet_lines else f"# {file_path}:{start_line}"
+            "\n".join(selected_lines) if selected_lines else f"# {file_path}:{start_line}"
         )
         concept = ranked_hunk.primary_concept or "generic.diff_comprehension"
 

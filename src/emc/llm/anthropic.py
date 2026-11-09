@@ -182,12 +182,25 @@ class AnthropicProvider(LLMProvider):
         if tool_input is None:
             text_blocks = [b.get("text", "") for b in content_blocks if b.get("type") == "text"]
             raw_text = "".join(text_blocks).strip()
+            if raw_text.startswith("```"):
+                lines = raw_text.splitlines()
+                if lines and lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                raw_text = "\n".join(lines).strip()
             try:
                 tool_input = json.loads(raw_text)
             except Exception:
                 raise ProviderError(
                     f"Anthropic API did not return tool_use block for {tool_name}: {data}"
                 )
+
+        if isinstance(tool_input, str):
+            try:
+                tool_input = json.loads(tool_input)
+            except Exception:
+                pass
 
         try:
             structured = schema.model_validate(tool_input)

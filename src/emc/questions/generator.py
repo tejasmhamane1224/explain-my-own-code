@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from emc.ingest import IngestResult, encapsulate_diff
 from emc.llm.base import LLMProvider
-from emc.llm.models import ProviderError
+from emc.llm.models import BudgetExceededError, ProviderError
 from emc.questions.schema import (
     QualityGateRejection,
     Question,
@@ -112,6 +112,22 @@ class QuestionGenerator:
                     system=SYSTEM_PROMPT,
                 )
                 candidate: Question = response.structured  # type: ignore[assignment]
+            except BudgetExceededError as exc:
+                rejection = QualityGateRejection(
+                    step="budget_exceeded",
+                    reason=f"LLM budget exceeded: {exc}",
+                    details={"attempt": attempt, "error": str(exc)},
+                )
+                all_rejections.append(rejection)
+                self.rejection_log.append(
+                    {
+                        "plan_concept": plan.target_concept,
+                        "attempt": attempt,
+                        "rejection": rejection.model_dump(),
+                    }
+                )
+                # Budget exhausted; retrying is futile.
+                return None, all_rejections
             except (ValidationError, ProviderError) as exc:
                 rejection = QualityGateRejection(
                     step="schema_violation",
@@ -171,5 +187,7 @@ class QuestionGenerator:
             all_rejections.extend(rejections)
             if question is not None:
                 accepted_questions.append(question)
+            if any(r.step == "budget_exceeded" for r in rejections):
+                break
 
         return accepted_questions, all_rejections

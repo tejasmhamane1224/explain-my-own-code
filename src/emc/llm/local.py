@@ -78,9 +78,20 @@ class LocalProvider(LLMProvider):
             raise ProviderError(f"Local LLM returned HTTP {res.status_code}: {res.text}")
 
         data = res.json()
+        if "error" in data:
+            raise ProviderError(f"Local LLM error: {data['error']}")
         response_text = data.get("response", "").strip()
 
-        usage = self._estimate_tokens(prompt, response_text)
+        if "prompt_eval_count" in data or "eval_count" in data:
+            p_tokens = int(data.get("prompt_eval_count", 0))
+            c_tokens = int(data.get("eval_count", 0))
+            usage = TokenUsage(
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=p_tokens + c_tokens,
+            )
+        else:
+            usage = self._estimate_tokens(prompt, response_text)
         cost = 0.0
 
         self.record_usage(usage, cost)
@@ -134,10 +145,20 @@ class LocalProvider(LLMProvider):
             raise ProviderError(f"Local LLM returned HTTP {res.status_code}: {res.text}")
 
         data = res.json()
+        if "error" in data:
+            raise ProviderError(f"Local LLM error: {data['error']}")
         raw_text = data.get("response", "").strip()
+        cleaned_text = raw_text
+        if cleaned_text.startswith("```"):
+            lines = cleaned_text.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            cleaned_text = "\n".join(lines).strip()
 
         try:
-            parsed = json.loads(raw_text)
+            parsed = json.loads(cleaned_text)
             structured = schema.model_validate(parsed)
         except Exception as exc:
             raise ProviderError(
@@ -145,7 +166,16 @@ class LocalProvider(LLMProvider):
                 f"Raw output: {raw_text[:200]}"
             ) from exc
 
-        usage = self._estimate_tokens(full_prompt, raw_text)
+        if "prompt_eval_count" in data or "eval_count" in data:
+            p_tokens = int(data.get("prompt_eval_count", 0))
+            c_tokens = int(data.get("eval_count", 0))
+            usage = TokenUsage(
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                total_tokens=p_tokens + c_tokens,
+            )
+        else:
+            usage = self._estimate_tokens(full_prompt, raw_text)
         cost = 0.0
 
         self.record_usage(usage, cost)

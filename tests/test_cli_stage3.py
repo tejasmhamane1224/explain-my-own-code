@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from emc.cli import app
@@ -64,3 +66,52 @@ def test_cli_generate_command_json(cli_runner: CliRunner) -> None:
     assert data["questions"][0]["concept_id"] == "anchor.signer_check"
     assert "usage" in data
     assert "cost_usd" in data
+
+
+def test_cli_generate_budget_exceeded_handled(
+    cli_runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify emc generate handles BudgetExceededError cleanly with code 1 and message."""
+    import emc.cli
+    from emc.config import ConfigLoadResult, EMCConfig
+
+    low_budget_config = ConfigLoadResult(
+        config=EMCConfig(
+            max_cost_dollars=0.000000001,
+            token_budget=1,
+            cache_dir=tmp_path / "cache",
+        ),
+        path=None,
+    )
+    monkeypatch.setattr(emc.cli, "load_config", lambda: low_budget_config)
+
+    result = cli_runner.invoke(app, ["generate", "--stdin"], input=SAMPLE_DIFF)
+    assert result.exit_code == 1
+    assert "Budget Exceeded" in result.stdout
+
+
+def test_cli_generate_budget_exceeded_handled_json(
+    cli_runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify emc generate --json outputs clean error payload when budget is exceeded."""
+    import emc.cli
+    from emc.config import ConfigLoadResult, EMCConfig
+
+    low_budget_config = ConfigLoadResult(
+        config=EMCConfig(
+            max_cost_dollars=0.000000001,
+            token_budget=1,
+            cache_dir=tmp_path / "cache",
+        ),
+        path=None,
+    )
+    monkeypatch.setattr(emc.cli, "load_config", lambda: low_budget_config)
+
+    result = cli_runner.invoke(app, ["generate", "--stdin", "--json"], input=SAMPLE_DIFF)
+    assert result.exit_code == 1
+    data = json.loads(result.stdout)
+    assert data["error"] == "budget_exceeded"

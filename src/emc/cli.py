@@ -26,6 +26,7 @@ from emc.ingest import (
 )
 from emc.llm import (
     AnthropicProvider,
+    BudgetExceededError,
     CachedLLMProvider,
     DiskCache,
     FakeProvider,
@@ -408,14 +409,24 @@ def quiz_cmd(
                 diff_hash=diff_hash,
             )
             generator_inst = QuestionGenerator(cached_provider)
-            accepted_qs, rejections_list = generator_inst.generate_quiz(
-                question_plans, redacted_ingest
-            )
+            try:
+                accepted_qs, rejections_list = generator_inst.generate_quiz(
+                    question_plans, redacted_ingest
+                )
+            except BudgetExceededError as exc:
+                console.print(f"[bold red]Budget Exceeded:[/bold red] {exc}")
+                raise typer.Exit(code=1)
+
+            if any(r.step == "budget_exceeded" for r in rejections_list):
+                budget_rej = next(r for r in rejections_list if r.step == "budget_exceeded")
+                console.print(f"[bold red]Budget Exceeded:[/bold red] {budget_rej.reason}")
+                raise typer.Exit(code=1)
 
             gen_table = Table(
                 title="Generated Questions & Quality Gate Results",
                 show_header=True,
             )
+
             gen_table.add_column("#", justify="center", style="bold cyan")
             gen_table.add_column("Type", style="magenta")
             gen_table.add_column("Concept", style="green")
@@ -741,7 +752,40 @@ def generate_cmd(
         diff_hash=diff_hash,
     )
     generator_inst = QuestionGenerator(cached_provider)
-    questions, rejections = generator_inst.generate_quiz(plans, redacted_ingest)
+    try:
+        questions, rejections = generator_inst.generate_quiz(plans, redacted_ingest)
+    except BudgetExceededError as exc:
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "budget_exceeded",
+                        "message": str(exc),
+                        "questions": [],
+                        "rejections": [],
+                    }
+                )
+            )
+        else:
+            console.print(f"[bold red]Budget Exceeded:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if any(r.step == "budget_exceeded" for r in rejections):
+        budget_rej = next(r for r in rejections if r.step == "budget_exceeded")
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "budget_exceeded",
+                        "message": budget_rej.reason,
+                        "questions": [q.model_dump() for q in questions],
+                        "rejections": [r.model_dump() for r in rejections],
+                    }
+                )
+            )
+        else:
+            console.print(f"[bold red]Budget Exceeded:[/bold red] {budget_rej.reason}")
+        raise typer.Exit(code=1)
 
     if as_json:
         output_payload = {

@@ -91,6 +91,7 @@ class FakeProvider(LLMProvider):
             "kwargs": kwargs,
         }
         self.recorded_calls.append(call_record)
+        self.check_budget()
 
         if self.simulated_errors:
             err = self.simulated_errors.pop(0)
@@ -135,6 +136,7 @@ class FakeProvider(LLMProvider):
             "kwargs": kwargs,
         }
         self.recorded_calls.append(call_record)
+        self.check_budget()
 
         if self.simulated_errors:
             err = self.simulated_errors.pop(0)

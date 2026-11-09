@@ -9,7 +9,7 @@
 - [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton (`init`, `quiz`, `explain`, `report`, `review`, `eval`, `doctor`, `config`, `hook`), hardened `emc doctor` diagnostics with corrupted config detection & safe key masking, comprehensive unit tests (24 passed).
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
-- [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (162 passed tests).
+- [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (177 passed tests).
 - [ ] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), hint ladder, deterministic matchers, LLM rubric judge for free text.
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
 - [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
@@ -83,7 +83,7 @@
    - Step 5: Injection & External URL Defense (rejection of instruction override patterns and ungrounded external URLs).
    - `QuestionGenerator` orchestrating generation with single-retry recovery and rejection logging.
 5. **Acceptance Test Suite (`tests/test_rejection_paths.py` & `tests/test_cli_stage3.py`)**:
-   - 162 total unit and acceptance tests covering every rejection path: grounding mismatch, out-of-bounds line range, answer leak in stem/distractor, solver mismatch/exception, ambiguity detection/exception, prompt injections in stems/mutants/explanations, schema violations, budget exceeded, and cache hit/miss lifecycle.
+   - 177 total unit and acceptance tests covering every rejection path: grounding mismatch, out-of-bounds line range, disconnected hunks, answer leak in stem/distractor (both key and explanation), solver mismatch/exception, ambiguity detection/exception, prompt injections in stems/mutants/explanations, delimiter collision, result tampering, schema violations, budget exceeded with immediate abort, and cache hit/miss lifecycle (including zero-cost cached replay on exhausted budgets).
 6. **CLI Integration**:
    - `emc generate`: Generates validated questions via `--provider` (`fake`, `anthropic`, `local`) with `--json` support.
    - `emc quiz --dry-run`: Renders planned question table, and with `--generate` executes full generation and quality gate validation.
@@ -94,7 +94,7 @@
 To verify Stage 3 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (162 passing tests)
+# 1. Run complete unit and acceptance test suite (177 passing tests)
 pytest
 
 # 2. Check code formatting and linting

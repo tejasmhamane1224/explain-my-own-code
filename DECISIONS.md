@@ -135,3 +135,19 @@
   5. `injection_instruction`: Rejection of instruction override patterns and unauthorized external URLs.
   If any check fails, provide structured feedback to the model and retry exactly once; if the second attempt fails, drop the question and log the rejection reason.
 
+## ADR-017: Quality Gate Hardening, Contiguous Hunk Validation, and Cache-First Budget Lifecycle
+- **Status**: Accepted
+- **Context**: In review of Stage 3, multiple subtle vulnerabilities were discovered:
+  1. Snippet grounding used naive `zip(snippet_lines, hunk_range_lines)` without line-count equivalence, permitting out-of-bounds line ranges (e.g., 10..10000) or extra unverified snippet lines to silently pass due to Python's `zip` truncating to the shorter iterable.
+  2. Answer leakage checking tested only stems and `\bunlike\s+{key}\b` phrases, allowing distractor choices and distractor explanations to directly leak keys (e.g. "Choice B is correct").
+  3. Prompt injection checks omitted untrusted diff encapsulation markers and comprehension flag tampering (`"comprehension_passed": true`).
+  4. Cache lookups were blocked behind `check_budget()`, causing cache hits with zero dollar cost to fail when budget ceilings were reached.
+  5. BudgetExceededError was swallowed as a generic ProviderError and triggered wasteful retries against an exhausted budget.
+- **Decision**:
+  1. Grounding: Require full contiguous line range coverage within a single hunk (`expected_range_set.issubset(...)`) and verify snippet lines match a contiguous windowed sub-sequence.
+  2. Answer Leakage: Scan both question stem and all distractor fields/explanations for direct and indirect answer key patterns.
+  3. Prompt Injection Defense: Expand injection patterns with delimiter collisions (`<<<END_UNTRUSTED_DIFF_PAYLOAD>>>`, `</system>`) and scoring manipulation flags.
+  4. Cache Budget Priority: In `CachedLLMProvider`, perform cache check prior to `check_budget()` so cached responses ($0.00 cost) are served without tripping budget caps.
+  5. Immediate Abort on Budget Exceeded: In `QuestionGenerator`, catch `BudgetExceededError` explicitly, log rejection reason `budget_exceeded`, and break retry loops immediately.
+
+
