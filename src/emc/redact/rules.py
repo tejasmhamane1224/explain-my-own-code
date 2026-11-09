@@ -9,17 +9,20 @@ from emc.redact.bip39_words import BIP39_WORDS
 from emc.redact.models import RedactionFinding
 
 BASE58_ALPHABET = set("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
-VALID_BIP39_DELIMITERS = set(" \t\r\n+-,'\"[]()")
+VALID_BIP39_DELIMITERS = set(" \t\r\n+-,'\"[]()\\")
 
 # Precompiled regular expressions
 ANTHROPIC_KEY_RE = re.compile(r"\bsk-ant-[a-zA-Z0-9_\-]{20,}\b")
 OPENAI_KEY_RE = re.compile(r"\bsk-(?:proj-|admin-)?[a-zA-Z0-9_\-]{20,}\b")
+GOOGLE_API_KEY_RE = re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b")
+HUGGINGFACE_KEY_RE = re.compile(r"\bhf_[a-zA-Z0-9]{34,}\b")
 GITHUB_TOKEN_RE = re.compile(
     r"\b(?:(?:ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{40,})\b"
 )
 AWS_KEY_ID_RE = re.compile(r"\b(?:AKIA|ASIA|AROA)[0-9A-Z]{16}\b")
 AWS_SECRET_RE = re.compile(
-    r"(?i)(?:aws_secret_access_key|aws_secret_key|secret_access_key)\s*[:=]\s*[\"']?([A-Za-z0-9/+=]{40})[\"']?"
+    r"(?:aws_secret_access_key|aws_secret_key|secret_access_key)\s*[:=]\s*[\"']?([A-Za-z0-9/+=]{40})[\"']?",
+    re.IGNORECASE,
 )
 STRIPE_KEY_RE = re.compile(r"\b(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,}\b")
 SLACK_TOKEN_RE = re.compile(r"\bxox[baprs]-[0-9a-zA-Z]{10,48}\b")
@@ -31,7 +34,8 @@ SOLANA_RPC_QUERY_RE = re.compile(
 # Hex private keys (0x followed by 64 hex chars, or raw 64 hex chars in sensitive assignments)
 HEX_0X_KEY_RE = re.compile(r"\b0x[0-9a-fA-F]{64}\b")
 HEX_ASSIGN_KEY_RE = re.compile(
-    r"(?i)\b(?:private_?key|secret_?key|priv_?key|signing_?key|wallet_?secret)\s*[:=]\s*[\"']?([0-9a-fA-F]{64})[\"']?"
+    r"\b[A-Za-z0-9_]*(?:private_?key|secret_?key|priv_?key|signing_?key|signer_?key|wallet_?secret|payer_?key)[A-Za-z0-9_]*\s*[:=]\s*[\"']?([0-9a-fA-F]{64})[\"']?",
+    re.IGNORECASE,
 )
 
 # Solana base58 private keys:
@@ -39,12 +43,14 @@ HEX_ASSIGN_KEY_RE = re.compile(
 SOLANA_B58_STANDALONE_RE = re.compile(r"\b([1-9A-HJ-NP-Za-km-z]{87,88})\b")
 # Base58 key in assignment or decode function (43 to 88 chars)
 SOLANA_B58_ASSIGN_RE = re.compile(
-    r"(?i)\b(?:private_?key|secret_?key|payer_?key|signer_?key|keypair|wallet_?secret|fromSecretKey|bs58\.decode)\s*[:=\(]\s*[\"']?([1-9A-HJ-NP-Za-km-z]{43,88})[\"']?"
+    r"\b[A-Za-z0-9_]*(?:private_?key|secret_?key|payer_?key|signer_?key|keypair|wallet_?secret)[A-Za-z0-9_]*\s*[:=]\s*[\"']?([1-9A-HJ-NP-Za-km-z]{43,88})[\"']?"
+    r"|\b(?:fromSecretKey|from_secret_key|decode)\s*\(\s*[\"']?([1-9A-HJ-NP-Za-km-z]{43,88})[\"']?",
+    re.IGNORECASE,
 )
 
-# Keypair byte array: e.g. [12, 34, ..., 56] (supporting diff markers + and -)
+# Keypair byte array: e.g. [12, 34, ..., 56] or Rust vec![] or Go []byte{}
 KEYPAIR_ARRAY_RE = re.compile(
-    r"(?:\[|vec!\[|Uint8Array\.from\(\[)\s*([\d\s,\+\-]{60,})\s*(?:\]|\))",
+    r"(?:\[|vec!\[|Uint8Array\.from\(\[|\[\]byte\{)\s*([0-9a-fA-Fx\s,\+\-]{60,})\s*(?:\]|\)|\})",
     re.DOTALL,
 )
 
@@ -58,7 +64,8 @@ ENV_SECRET_LINE_RE = re.compile(
 
 # Generic sensitive code assignments
 GENERIC_SECRET_ASSIGN_RE = re.compile(
-    r"(?i)\b(?:client_secret|api_secret|access_token|secret_token|app_secret|auth_token)\s*[:=]\s*[\"']([^\"'\s]{16,})[\"']"
+    r"\b[A-Za-z0-9_]*(?:client_?secret|api_?secret|access_?token|secret_?token|app_?secret|auth_?token)[A-Za-z0-9_]*\s*[:=]\s*[\"']([^\"'\s]{16,})[\"']",
+    re.IGNORECASE,
 )
 
 PLACEHOLDER_VALUES = {
@@ -87,15 +94,17 @@ def mask_secret(secret: str) -> str:
 
 
 def find_solana_keypair_arrays(text: str) -> list[RedactionFinding]:
-    """Detect 32-to-64 integer byte arrays representing Solana private keypairs."""
+    """Detect 32-to-64 integer or hex byte arrays representing Solana private keypairs."""
     findings: list[RedactionFinding] = []
     for match in KEYPAIR_ARRAY_RE.finditer(text):
         raw_inner = match.group(1)
-        # Extract integer tokens
-        tokens = re.findall(r"\b\d{1,3}\b", raw_inner)
+        tokens = re.findall(r"\b(?:0x[0-9a-fA-F]{1,2}|\d{1,3})\b", raw_inner)
         if len(tokens) not in (32, 64):
             continue
-        valid_bytes = all(0 <= int(t) <= 255 for t in tokens)
+        try:
+            valid_bytes = all(0 <= int(t, 0) <= 255 for t in tokens)
+        except ValueError:
+            continue
         if valid_bytes:
             matched_str = match.group(0)
             findings.append(
@@ -136,8 +145,10 @@ def find_solana_base58_keys(text: str) -> list[RedactionFinding]:
 
     # 2. Assigned / decoded Base58 keys (43-88 chars)
     for match in SOLANA_B58_ASSIGN_RE.finditer(text):
-        candidate = match.group(1)
-        if all(c in BASE58_ALPHABET for c in candidate):
+        candidate = match.group(1) or match.group(2)
+        start_col = match.start(1) if match.group(1) is not None else match.start(2)
+        end_col = match.end(1) if match.group(1) is not None else match.end(2)
+        if candidate and all(c in BASE58_ALPHABET for c in candidate):
             findings.append(
                 RedactionFinding(
                     rule_id="solana_base58_key",
@@ -146,8 +157,8 @@ def find_solana_base58_keys(text: str) -> list[RedactionFinding]:
                     matched_text=candidate,
                     masked_text=mask_secret(candidate),
                     replacement="[REDACTED:solana_base58_key]",
-                    start_col=match.start(1),
-                    end_col=match.end(1),
+                    start_col=start_col,
+                    end_col=end_col,
                 )
             )
 
@@ -194,9 +205,9 @@ def find_hex_private_keys(text: str) -> list[RedactionFinding]:
 
 
 def find_bip39_seed_phrases(text: str) -> list[RedactionFinding]:
-    """Detect 12, 15, 18, 21, or 24 word BIP-39 mnemonic seed phrases."""
+    """Detect 12, 15, 18, 21, or 24 word BIP-39 mnemonic seed phrases (case-insensitive)."""
     findings: list[RedactionFinding] = []
-    word_pattern = re.compile(r"\b[a-z]{3,8}\b")
+    word_pattern = re.compile(r"\b[A-Za-z]{3,8}\b")
     all_matches = list(word_pattern.finditer(text))
 
     if not all_matches:
@@ -217,12 +228,12 @@ def find_bip39_seed_phrases(text: str) -> list[RedactionFinding]:
     num_matches = len(matches)
 
     while idx < num_matches:
-        if matches[idx].group(0) not in BIP39_WORDS:
+        if matches[idx].group(0).lower() not in BIP39_WORDS:
             idx += 1
             continue
 
         start_idx = idx
-        while idx < num_matches and matches[idx].group(0) in BIP39_WORDS:
+        while idx < num_matches and matches[idx].group(0).lower() in BIP39_WORDS:
             if idx > start_idx:
                 gap = text[matches[idx - 1].end() : matches[idx].start()]
                 if not all(c in VALID_BIP39_DELIMITERS for c in gap) or "\n\n" in gap:
@@ -317,6 +328,38 @@ def find_api_keys(text: str) -> list[RedactionFinding]:
                 matched_text=m,
                 masked_text=mask_secret(m),
                 replacement="[REDACTED:openai_api_key]",
+                start_col=match.start(),
+                end_col=match.end(),
+            )
+        )
+
+    # Google / Gemini
+    for match in GOOGLE_API_KEY_RE.finditer(text):
+        m = match.group(0)
+        findings.append(
+            RedactionFinding(
+                rule_id="google_api_key",
+                category="api_key",
+                description="Google / Gemini API key",
+                matched_text=m,
+                masked_text=mask_secret(m),
+                replacement="[REDACTED:google_api_key]",
+                start_col=match.start(),
+                end_col=match.end(),
+            )
+        )
+
+    # HuggingFace
+    for match in HUGGINGFACE_KEY_RE.finditer(text):
+        m = match.group(0)
+        findings.append(
+            RedactionFinding(
+                rule_id="huggingface_token",
+                category="api_key",
+                description="HuggingFace API token",
+                matched_text=m,
+                masked_text=mask_secret(m),
+                replacement="[REDACTED:huggingface_token]",
                 start_col=match.start(),
                 end_col=match.end(),
             )

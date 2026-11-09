@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import bisect
+
 from emc.ingest.caps import apply_caps
 from emc.ingest.ignore import filter_ignored_files
 from emc.ingest.models import IngestResult
@@ -40,24 +42,14 @@ class Redactor:
                 filtered_findings.append(finding)
                 last_end = finding.end_col
 
-        # Compute line numbers
+        # Compute line numbers via binary search over newline offsets
         newline_offsets: list[int] = [0]
         for idx, char in enumerate(text):
             if char == "\n":
                 newline_offsets.append(idx + 1)
 
-        def get_line_number(col: int) -> int:
-            # Binary search or scan
-            line_no = 1
-            for offset in newline_offsets:
-                if offset <= col:
-                    line_no = newline_offsets.index(offset) + 1
-                else:
-                    break
-            return line_no
-
         for finding in filtered_findings:
-            finding.line_number = get_line_number(finding.start_col)
+            finding.line_number = bisect.bisect_right(newline_offsets, finding.start_col)
             finding.file_path = file_path
 
         return filtered_findings

@@ -188,3 +188,85 @@ def test_mask_secret_utility() -> None:
     assert mask_secret("short") == "***"
     assert mask_secret("sk-ant-1234567890abcdef") == "sk-a...cdef"
     assert "1234567890ab" not in mask_secret("sk-ant-1234567890abcdef")
+
+
+def test_redact_prefixed_variables() -> None:
+    """Verify variables with prefixes (ETH_PRIVATE_KEY, SOLANA_SECRET_KEY, etc.) are redacted."""
+    eth_k = "6c89f36288ced34006297063fe7e436d23157a6c62fbe75560bdec87eb232ad4"
+    sol_k = "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofMTSgmtUVZ47MTWrNwYisZ84Ea49"
+    dep_k = "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+    snippet = (
+        f'const ETH_PRIVATE_KEY = "{eth_k}";\n'
+        f'const SOLANA_SECRET_KEY = "{sol_k}";\n'
+        'const GOOGLE_CLIENT_SECRET = "super_secret_oauth_client_secret_xyz123";\n'
+        f'const DEPLOYER_SIGNING_KEY = "{dep_k}";\n'
+    )
+    res = redact_diff(snippet)
+    assert res.has_secrets
+    assert "6c89f36288ce" not in res.redacted_text
+    assert "4uQeVj5tqViQ" not in res.redacted_text
+    assert "super_secret_oauth_client_secret_xyz123" not in res.redacted_text
+    assert "0x4f3edf983ac6" not in res.redacted_text
+    assert "[REDACTED:hex_private_key]" in res.redacted_text
+    assert "[REDACTED:solana_base58_key]" in res.redacted_text
+    assert "[REDACTED:generic_secret]" in res.redacted_text
+
+
+def test_redact_bip39_case_insensitive_and_multiline() -> None:
+    """Verify BIP-39 seed phrases in uppercase, TitleCase, and continuations are redacted."""
+    # Uppercase
+    upper_phrase = (
+        "ABANDON ABILITY ABLE ABOUT ABOVE ABSENT ABSORB ABSTRACT ABSURD ABUSE ACCESS ACCIDENT"
+    )
+    res1 = redact_diff(f'const SEED = "{upper_phrase}";')
+    assert res1.has_secrets
+    assert "[REDACTED:bip39_seed_phrase]" in res1.redacted_text
+    assert upper_phrase not in res1.redacted_text
+
+    # TitleCase
+    title_phrase = (
+        "Abandon Ability Able About Above Absent Absorb Abstract Absurd Abuse Access Accident"
+    )
+    res2 = redact_diff(f'mnemonic = "{title_phrase}";')
+    assert res2.has_secrets
+    assert "[REDACTED:bip39_seed_phrase]" in res2.redacted_text
+    assert title_phrase not in res2.redacted_text
+
+    # Backslash continuation
+    continuation = (
+        'mnemonic = "abandon ability able about " \\\n'
+        '  "above absent absorb abstract " \\\n'
+        '  "absurd abuse access accident"\n'
+    )
+    res3 = redact_diff(continuation)
+    assert res3.has_secrets
+    assert "[REDACTED:bip39_seed_phrase]" in res3.redacted_text
+
+
+def test_redact_google_and_hf_api_keys() -> None:
+    """Verify Google/Gemini and HuggingFace API tokens are detected and redacted."""
+    snippet = (
+        'const geminiKey = "AIzaSyD_TestFakeKey1234567890AbCdEfGhIj";\n'
+        'const hfToken = "hf_0123456789abcdefghijklmnopqrstuvwxyz";\n'
+    )
+    res = redact_diff(snippet)
+    assert res.has_secrets
+    assert "AIzaSyD_" not in res.redacted_text
+    assert "hf_0123456" not in res.redacted_text
+    assert "[REDACTED:google_api_key]" in res.redacted_text
+    assert "[REDACTED:huggingface_token]" in res.redacted_text
+
+
+def test_redact_hex_byte_arrays_and_go_byte_slices() -> None:
+    """Verify hex byte arrays and Go []byte slices are detected as keypairs."""
+    # Go byte slice
+    go_bytes = "keypair := []byte{" + ", ".join(str(i % 256) for i in range(64)) + "}"
+    res1 = redact_diff(go_bytes)
+    assert res1.has_secrets
+    assert "[REDACTED:solana_keypair_array]" in res1.redacted_text
+
+    # Hex byte array
+    hex_bytes = "[" + ", ".join(f"0x{i:02x}" for i in range(64)) + "]"
+    res2 = redact_diff(f"let key = {hex_bytes};")
+    assert res2.has_secrets
+    assert "[REDACTED:solana_keypair_array]" in res2.redacted_text

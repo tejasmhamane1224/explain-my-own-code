@@ -253,3 +253,75 @@ def test_scan_for_injection_markers() -> None:
     warnings = scan_for_injection_markers(diff_with_attack)
     assert len(warnings) >= 1
     assert any("instruction_override" in w for w in warnings)
+
+
+def test_parse_diff_with_spaces_and_quotes() -> None:
+    """Verify diff header parsing preserves filenames with spaces and quotes."""
+    diff_spaces = """diff --git a/my cool folder/file name.py b/my cool folder/file name.py
+new file mode 100644
+index 0000000..abcdef1
+--- /dev/null
++++ b/my cool folder/file name.py
+@@ -0,0 +1,1 @@
++print("hello")
++"""
+    files = parse_unified_diff(diff_spaces)
+    assert len(files) == 1
+    assert files[0].path == "my cool folder/file name.py"
+    assert files[0].new_path == "my cool folder/file name.py"
+
+    diff_quoted = """diff --git "a/path with space.ts" "b/path with space.ts"
+index 1111111..2222222 100644
+--- "a/path with space.ts"
++++ "b/path with space.ts"
+@@ -1,1 +1,1 @@
+-old
++new
++"""
+    files_q = parse_unified_diff(diff_quoted)
+    assert len(files_q) == 1
+    assert files_q[0].path == "path with space.ts"
+    assert files_q[0].old_path == "path with space.ts"
+    assert files_q[0].new_path == "path with space.ts"
+
+
+def test_apply_caps_preserves_empty_hunk_files() -> None:
+    """Verify apply_caps preserves file metadata (renames/mode changes) with no hunks."""
+    rename_diff = """diff --git a/old.txt b/new.txt
+similarity index 100%
+rename from old.txt
+rename to new.txt
+"""
+    files = parse_unified_diff(rename_diff)
+    assert len(files) == 1
+    assert files[0].is_rename
+
+    capped, is_trunc, reason = apply_caps(files)
+    assert len(capped) == 1
+    assert capped[0].is_rename
+    assert capped[0].path == "new.txt"
+    assert not is_trunc
+
+
+def test_git_commit_diff_root_commit(tmp_path: Path) -> None:
+    """Verify get_commit_diff works on a root commit (which has no parent)."""
+    repo = tmp_path / "root_repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@emc.org"], cwd=repo, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Tester"], cwd=repo, check=True, capture_output=True
+    )
+
+    init_file = repo / "init.txt"
+    init_file.write_text("initial commit content\n", encoding="utf-8")
+    subprocess.run(["git", "add", "init.txt"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial commit"], cwd=repo, check=True, capture_output=True
+    )
+
+    # Must succeed without crashing on HEAD~1..HEAD
+    root_diff = get_commit_diff("HEAD", cwd=repo)
+    assert "initial commit content" in root_diff

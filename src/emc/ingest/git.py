@@ -34,8 +34,10 @@ def _run_git_command(args: list[str], cwd: Path | None = None) -> str:
             cwd=target_dir,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
-            shell=(sys.platform == "win32"),
+            shell=False,
         )
         return proc.stdout
     except subprocess.CalledProcessError as exc:
@@ -56,13 +58,13 @@ def get_unstaged_diff(cwd: Path | None = None) -> str:
 
 
 def get_commit_diff(revision: str, cwd: Path | None = None) -> str:
-    """Retrieve diff for a commit revision or range (e.g. HEAD~1, HEAD~2..HEAD)."""
+    """Retrieve diff for a commit revision or range (e.g. HEAD~1, HEAD~2..HEAD, or commit hash)."""
     rev = revision.strip()
     if ".." in rev:
         args = ["diff", "--no-color", "-U3", rev]
     else:
-        # Single revision: compare with its parent commit
-        args = ["diff", "--no-color", "-U3", f"{rev}~1..{rev}"]
+        # Single revision: git show handles both regular commits and root/initial commits cleanly
+        args = ["show", "--no-color", "-U3", "--pretty=", rev]
     return _run_git_command(args, cwd=cwd)
 
 
@@ -89,7 +91,10 @@ def ingest_diff(
         source = "stdin"
     elif use_stdin:
         try:
-            raw_diff = sys.stdin.read()
+            if hasattr(sys.stdin, "buffer"):
+                raw_diff = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+            else:
+                raw_diff = sys.stdin.read()
         except Exception:
             raw_diff = ""
         source = "stdin"

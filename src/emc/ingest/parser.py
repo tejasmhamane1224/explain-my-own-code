@@ -11,13 +11,33 @@ DIFF_GIT_RE = re.compile(r"^diff --git\s+(?:a/)?(.*?)\s+(?:b/)?(.*)$")
 
 
 def _clean_path(path: str) -> str:
-    """Normalize git diff paths removing leading a/ or b/ prefixes."""
+    """Normalize git diff paths removing leading a/ or b/ prefixes, quotes, and tabs."""
     path = path.strip()
+    if path.startswith('"') and path.endswith('"'):
+        path = path[1:-1]
+    if "\t" in path:
+        path = path.split("\t", 1)[0].strip()
     if path == "/dev/null":
         return path
     if path.startswith("a/") or path.startswith("b/"):
         return path[2:]
     return path
+
+
+def _parse_diff_git_header(line: str) -> tuple[str | None, str | None]:
+    """Extract old and new paths from a 'diff --git ...' header line."""
+    remainder = line[len("diff --git ") :].strip()
+    if remainder.startswith('"'):
+        m = re.match(r'^"(.*?)"\s+"(.*)"$', remainder)
+        if m:
+            return _clean_path(m.group(1)), _clean_path(m.group(2))
+    if " b/" in remainder:
+        a_part, b_part = remainder.rsplit(" b/", 1)
+        return _clean_path(a_part), _clean_path(b_part)
+    parts = remainder.split(None, 1)
+    if len(parts) == 2:
+        return _clean_path(parts[0]), _clean_path(parts[1])
+    return None, None
 
 
 def parse_unified_diff(diff_text: str) -> list[FileDiff]:
@@ -59,9 +79,7 @@ def parse_unified_diff(diff_text: str) -> list[FileDiff]:
         # 1. Start of a new file diff
         if line.startswith("diff --git "):
             finalize_file()
-            m = DIFF_GIT_RE.match(line)
-            old_p = _clean_path(m.group(1)) if m else None
-            new_p = _clean_path(m.group(2)) if m else None
+            old_p, new_p = _parse_diff_git_header(line)
             current_file = FileDiff(old_path=old_p, new_path=new_p)
             header_lines.append(line)
             idx += 1

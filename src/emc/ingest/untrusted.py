@@ -41,8 +41,12 @@ def sanitize_delimiters(diff_text: str) -> str:
     sanitized = diff_text
     sanitized = sanitized.replace(UNTRUSTED_END_TAG, "[ESCAPED_UNTRUSTED_END_TAG]")
     sanitized = sanitized.replace(UNTRUSTED_START_TAG, "[ESCAPED_UNTRUSTED_START_TAG]")
+    sanitized = sanitized.replace("=== END UNTRUSTED DIFF DATA ===", "[ESCAPED_END_UNTRUSTED_DATA]")
+    sanitized = sanitized.replace("=== BEGIN UNTRUSTED DIFF DATA", "[ESCAPED_BEGIN_UNTRUSTED_DATA")
     sanitized = sanitized.replace("</untrusted_diff>", "[ESCAPED_UNTRUSTED_DIFF_TAG]")
     sanitized = sanitized.replace("</untrusted_input>", "[ESCAPED_UNTRUSTED_INPUT_TAG]")
+    sanitized = sanitized.replace("</diff>", "[ESCAPED_DIFF_TAG]")
+    sanitized = sanitized.replace("</system>", "[ESCAPED_SYSTEM_TAG]")
     return sanitized
 
 

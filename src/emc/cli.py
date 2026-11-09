@@ -17,7 +17,12 @@ from rich.table import Table
 from emc import __version__
 from emc.config import load_config
 from emc.doctor import render_doctor_report, run_doctor_checks
-from emc.ingest import GitError, ingest_diff
+from emc.ingest import (
+    GitError,
+    encapsulate_diff,
+    ingest_diff,
+    scan_for_injection_markers,
+)
 from emc.redact import Redactor
 
 app = typer.Typer(
@@ -53,8 +58,10 @@ def _get_git_hooks_dir() -> Path | None:
             ["git", "rev-parse", "--git-path", "hooks"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
-            shell=(sys.platform == "win32"),
+            shell=False,
         )
         resolved = Path(proc.stdout.strip())
         return resolved if resolved.is_absolute() else Path.cwd() / resolved
@@ -241,10 +248,22 @@ def quiz_cmd(
                 )
             console.print(secrets_table)
 
+        injection_warnings = scan_for_injection_markers(redacted_ingest.raw_diff)
+        if injection_warnings:
+            injection_table = Table(
+                title="Potential Prompt Injection Markers Detected",
+                show_header=True,
+            )
+            injection_table.add_column("Warning", style="bold yellow")
+            for w in injection_warnings:
+                injection_table.add_row(w)
+            console.print(injection_table)
+
+        encapsulated_payload = encapsulate_diff(redacted_ingest.raw_diff)
         console.print(
             Panel(
-                redacted_ingest.raw_diff,
-                title="Redacted Diff Payload",
+                encapsulated_payload,
+                title="Redacted Diff Payload (LLM Encapsulated)",
                 border_style="cyan",
             )
         )

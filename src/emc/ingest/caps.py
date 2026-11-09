@@ -62,7 +62,7 @@ def apply_caps(
             accepted_hunks.append(hunk)
             total_hunks += 1
 
-        if accepted_hunks:
+        if accepted_hunks or not file_diff.hunks:
             capped_file = file_diff.model_copy(update={"hunks": accepted_hunks})
             capped_files.append(capped_file)
             total_bytes += file_bytes
