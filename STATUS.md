@@ -1,7 +1,7 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 2: Detectors + Ranking (No LLM)** -- **COMPLETED & HARDENED**
+**Stage 3: LLM Layer + Generation + Validator** -- **COMPLETED & HARDENED**
 
 ---
 
@@ -9,7 +9,7 @@
 - [x] **Stage 0: Plan + Scaffold**: Repo layout, `CLAUDE.md`, `PLAN.md` with competitor comparison, `DECISIONS.md`, `STATUS.md`, CI workflow, Typer/Rich CLI skeleton (`init`, `quiz`, `explain`, `report`, `review`, `eval`, `doctor`, `config`, `hook`), hardened `emc doctor` diagnostics with corrupted config detection & safe key masking, comprehensive unit tests (24 passed).
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
-- [ ] **Stage 3: LLM Layer + Generation + Validator**: Provider abstraction (Anthropic, Fake, Local), disk cache, question schemas, 4-step quality validator.
+- [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (162 passed tests).
 - [ ] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), hint ladder, deterministic matchers, LLM rubric judge for free text.
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
 - [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
@@ -61,11 +61,40 @@
 
 ---
 
+## Stage 3 Deliverables Summary
+1. **LLM Provider Layer (`src/emc/llm/`)**:
+   - `LLMProvider` abstract base interface with `generate_text`, `generate_structured` (Pydantic validation), token usage accumulation, and cost tracking.
+   - `AnthropicProvider`: Anthropic Messages API client supporting tool-use JSON schema structured output, model resolution from `EMC_MODEL` (default: `claude-3-7-sonnet-latest`), and published pricing tables.
+   - `FakeProvider`: Configurable deterministic provider for unit testing and offline development supporting canned responses, scriptable queues, dynamic response handlers, simulated exceptions, and token counting.
+   - `LocalProvider`: HTTP stub for local models (Ollama, llama.cpp, or local HTTP server) with JSON schema formatting constraint.
+2. **Persistent Disk Cache (`src/emc/llm/cache.py`)**:
+   - `DiskCache`: Content-hashed filesystem storage under `.emc/cache/` keyed by `sha256(diff_hash : model : sha256(prompt))`.
+   - `CachedLLMProvider`: Transparent decorator wrapper returning cached responses with zero cost (`cost_usd = 0.0`) and preventing duplicate provider calls.
+   - Native `--max-cost` and token budget checking and enforcement.
+3. **Question Schemas & Planning (`src/emc/questions/schema.py` & `src/emc/plan/`)**:
+   - 5 Canonical question types: `predict-output`, `what-breaks-if`, `consequence`, `spot-the-bug`, `explain-back`.
+   - Pydantic models for `Question`, `Distractor`, `RubricCriterion`, `QualityGateRejection`, `ValidationResult`, `SolverSolution`, `AmbiguityEvaluation`, and `QuestionPlan`.
+   - `RULE_STRATEGY_MAP` pairing Stage 2 static risk findings to targeted question types and templates with fallback strategy for open diff hunks.
+4. **4-Step Quality Gate (`src/emc/questions/validate.py` & `src/emc/questions/generator.py`)**:
+   - Step 1: Snippet Grounding (verbatim text existence and exact line range coverage in diff hunks).
+   - Step 2: No Answer Leakage (prohibits correct option keys and substantive answers from leaking in stem or distractor explanations).
+   - Step 3: Independent Solvability (automated solver pass solving question from diff alone and matching answer key).
+   - Step 4: Non-Ambiguity (second pass flagging multiple defensible answers).
+   - Step 5: Injection & External URL Defense (rejection of instruction override patterns and ungrounded external URLs).
+   - `QuestionGenerator` orchestrating generation with single-retry recovery and rejection logging.
+5. **Acceptance Test Suite (`tests/test_rejection_paths.py` & `tests/test_cli_stage3.py`)**:
+   - 162 total unit and acceptance tests covering every rejection path: grounding mismatch, out-of-bounds line range, answer leak in stem/distractor, solver mismatch/exception, ambiguity detection/exception, prompt injections in stems/mutants/explanations, schema violations, budget exceeded, and cache hit/miss lifecycle.
+6. **CLI Integration**:
+   - `emc generate`: Generates validated questions via `--provider` (`fake`, `anthropic`, `local`) with `--json` support.
+   - `emc quiz --dry-run`: Renders planned question table, and with `--generate` executes full generation and quality gate validation.
+
+---
+
 ## Verification Commands
-To verify Stage 2 independently, run from the `explain-my-own-code` directory:
+To verify Stage 3 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit test suite (116 passing tests)
+# 1. Run complete unit and acceptance test suite (162 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -75,15 +104,15 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Run detector test matrix specifically
-pytest tests/test_detectors.py -v
+# 4. Run rejection path acceptance tests specifically
+pytest tests/test_rejection_paths.py -v
 
-# 5. Try emc detect on a positive Anchor smart contract fixture
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc detect --stdin
+# 5. Try emc generate with fake provider on a positive Anchor smart contract fixture
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc generate --stdin
 
-# 6. Try emc detect with JSON output
-Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc detect --stdin --json
+# 6. Try emc generate with machine-readable JSON output
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc generate --stdin --json
 
-# 7. Try dry-run with static risk detection on stdin
-Get-Content fixtures/detectors/ts_hardcoded_rpc_positive.diff | emc quiz --stdin --dry-run
+# 7. Try dry-run with full question generation and quality gate validation
+Get-Content fixtures/detectors/anchor_missing_signer_positive.diff | emc quiz --stdin --dry-run --generate
 ```

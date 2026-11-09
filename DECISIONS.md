@@ -97,3 +97,41 @@
   3. Bidirectional Precision Matching: Check arithmetic operators bidirectionally (`float * balance` and `balance * float`, `sol + balance` and `balance + sol`).
   4. Path Normalization: Normalize Windows backslashes (`\`) to forward slashes (`/`) before regex evaluation and dictionary key lookups in hunk ranking.
 
+## ADR-013: LLM Provider Abstraction, Deterministic Fake Provider, and Local Stub
+- **Status**: Accepted
+- **Context**: Relying directly on vendor SDKs introduces tight coupling, network dependency during tests, unpredictable costs, and prevents offline local development.
+- **Decision**: Define an abstract `LLMProvider` contract providing `generate_text` and `generate_structured` (Pydantic schema validation). Implement three concrete providers:
+  1. `AnthropicProvider`: Production client using Anthropic Messages API with structured Tool-Use, model configuration from `EMC_MODEL` (default: `claude-3-7-sonnet-latest`), and published pricing tables for cost tracking.
+  2. `FakeProvider`: Deterministic, scriptable provider supporting canned queues, custom handlers, simulated exceptions, and token estimation (~4 chars/token) for unit tests and CI.
+  3. `LocalProvider`: HTTP stub supporting Ollama, llama.cpp, or local servers with JSON schema constraints.
+  Enforce token budgets and max-cost ceilings natively within provider base classes.
+
+## ADR-014: Deterministic Disk-Backed Semantic Cache Keying
+- **Status**: Accepted
+- **Context**: Re-running comprehension checks or evaluating diffs repeatedly without caching incurs redundant LLM costs, introduces latency, and impairs reproducibility.
+- **Decision**: Implement `DiskCache` storing structured responses under `.emc/cache/` (or configured directory). Compute cache keys using:
+  `Key = sha256(diff_hash : model : sha256(prompt))`
+  Cached responses return with zero cost (`cost_usd = 0.0`) and bypass network calls completely. Support cache invalidation via `clear()` and cache inspection.
+
+## ADR-015: 5 Canonical Comprehension Question Types and Pydantic Schemas
+- **Status**: Accepted
+- **Context**: Generic flashcards or single multiple-choice formats fail to evaluate deep comprehension of safety-critical Solana smart contract and wallet code.
+- **Decision**: Standardize on 5 canonical question types:
+  1. `predict-output`: Compute state mutation or return value for input state X.
+  2. `what-breaks-if`: Analyze edge cases, omissions, or malicious inputs.
+  3. `consequence`: Trace user funds, signer authorization, or protocol solvency.
+  4. `spot-the-bug`: Present a mutated snippet with an injected flaw and ask the developer to identify the vulnerability.
+  5. `explain-back`: Free-text justification evaluated against structured multi-criteria rubrics (`RubricCriterion`).
+  Model all questions, distractors, rubrics, and hint ladders as rigid Pydantic models.
+
+## ADR-016: Rigorous 4-Step Quality Gate with Single-Retry Self-Correction
+- **Status**: Accepted
+- **Context**: LLM hallucination in question generation generates bogus line references, leaks answers in question stems, creates unsolvable questions, or falls prey to indirect prompt injections.
+- **Decision**: Filter all candidate questions through an automated 4-step quality gate:
+  1. `snippet_grounding`: Verbatim code snippet existence and exact line range coverage in diff hunks.
+  2. `no_answer_leak`: Regex and phrase scanning ensuring neither the letter key nor the substantive answer text leaks in the stem or distractor explanations.
+  3. `independent_solvability`: Automated solver pass with diff alone reproducing the expected answer key.
+  4. `non_ambiguity`: Ambiguity evaluation pass flagging questions with multiple defensible choices.
+  5. `injection_instruction`: Rejection of instruction override patterns and unauthorized external URLs.
+  If any check fails, provide structured feedback to the model and retry exactly once; if the second attempt fails, drop the question and log the rejection reason.
+

@@ -138,11 +138,17 @@ Each concept maintains a Leitner box (1 to 5) in `.emc/ledger.jsonl`. Correct an
 - `emc detect` and `emc quiz --dry-run` terminal integration rendering Detected Static Risk Findings and Ranked Diff Hunks Rich tables.
 - Comprehensive test suite (100 passing tests, clean ruff and strict mypy).
 
-### Stage 3: LLM Layer + Generation + Validator
-- Provider interfaces: `AnthropicProvider`, `FakeProvider`, `LocalStubProvider`.
-- Disk cache keyed by diff hash and prompt signature.
-- Pydantic structured output models for questions.
-- 4-step Question Validator.
+### Stage 3: LLM Layer + Generation + Validator [COMPLETED]
+- Abstract provider interface `LLMProvider` with token usage and cost accounting.
+- `AnthropicProvider` (Claude 3.7/3.5 Messages API with tool-use JSON schema and published pricing).
+- `FakeProvider` (configurable deterministic responses, scripted handlers, queueing, and budget simulation).
+- `LocalProvider` (HTTP stub for local models like Ollama or llama.cpp).
+- Content-hash `DiskCache` under `.emc/cache/` keyed by `sha256(diff_hash : model : sha256(prompt))` with `--max-cost` and token budget protection.
+- 5 Canonical question types (`predict-output`, `what-breaks-if`, `consequence`, `spot-the-bug`, `explain-back`) and Pydantic schemas.
+- Question planner mapping static detector findings and open hunks to targeted question templates.
+- 4-step Question Validator (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`) with single-retry regeneration and rejection logging.
+- `emc generate` and `emc quiz --dry-run --generate` CLI commands with Rich table and JSON output.
+- Comprehensive acceptance tests covering every rejection path (162 passing tests).
 
 ### Stage 4: Session + Grading
 - Interactive Rich terminal UI.

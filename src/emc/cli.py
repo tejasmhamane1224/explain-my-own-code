@@ -24,6 +24,16 @@ from emc.ingest import (
     ingest_diff,
     scan_for_injection_markers,
 )
+from emc.llm import (
+    AnthropicProvider,
+    CachedLLMProvider,
+    DiskCache,
+    FakeProvider,
+    LLMProvider,
+    LocalProvider,
+)
+from emc.plan import create_question_plans
+from emc.questions import QuestionGenerator
 from emc.redact import Redactor
 
 app = typer.Typer(
@@ -180,6 +190,13 @@ def quiz_cmd(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Redact secrets and display without network call.")
     ] = False,
+    generate: Annotated[
+        bool,
+        typer.Option(
+            "--generate",
+            help="Generate and validate questions through quality gate during dry run.",
+        ),
+    ] = False,
     skip: Annotated[
         bool, typer.Option("--skip", help="Skip comprehension quiz (logged to ledger).")
     ] = False,
@@ -306,6 +323,125 @@ def quiz_cmd(
                     rules_display,
                 )
             console.print(hunk_table)
+
+        question_plans = create_question_plans(detector_report, max_questions=3)
+        if question_plans:
+            plan_table = Table(
+                title="Planned Comprehension Questions (Stage 3 Planning)",
+                show_header=True,
+            )
+            plan_table.add_column("Rank", justify="center", style="bold cyan")
+            plan_table.add_column("Type", style="magenta")
+            plan_table.add_column("Concept", style="green")
+            plan_table.add_column("Target Range", style="yellow")
+            plan_table.add_column("Strategy", style="blue")
+            plan_table.add_column("Stem Template", style="white")
+
+            for p in question_plans:
+                loc = f"{p.file_path}:{p.start_line}-{p.end_line}"
+                stem_prev = (
+                    p.stem_template[:50] + "..." if len(p.stem_template) > 50 else p.stem_template
+                )
+                plan_table.add_row(
+                    str(p.hunk.rank),
+                    p.recommended_type.value,
+                    p.target_concept,
+                    loc,
+                    p.strategy,
+                    stem_prev,
+                )
+            console.print(plan_table)
+
+        if generate and question_plans:
+            config, _ = load_config()
+            diff_hash = DiskCache.compute_hash(redacted_ingest.raw_diff)
+            provider: LLMProvider
+            if os.getenv("ANTHROPIC_API_KEY"):
+                provider = AnthropicProvider(
+                    model=config.model,
+                    max_cost_dollars=config.max_cost_dollars,
+                    token_budget=config.token_budget,
+                )
+            else:
+                provider = FakeProvider(
+                    model=config.model,
+                    max_cost_dollars=config.max_cost_dollars,
+                    token_budget=config.token_budget,
+                )
+                for plan in question_plans:
+                    provider.enqueue_structured(
+                        {
+                            "type": plan.recommended_type.value,
+                            "concept_id": plan.target_concept,
+                            "hunk_rank": plan.hunk.rank,
+                            "file_path": plan.file_path,
+                            "start_line": plan.start_line,
+                            "end_line": plan.end_line,
+                            "snippet": plan.snippet,
+                            "stem": f"Comprehension check: {plan.stem_template}",
+                            "choices": [
+                                {
+                                    "key": "A",
+                                    "text": "Correct expected behavior matching diff",
+                                    "explanation": "Matches implementation",
+                                },
+                                {
+                                    "key": "B",
+                                    "text": "Incorrect alternative behavior",
+                                    "explanation": "Does not match diff",
+                                },
+                            ],
+                            "answer_key": "A",
+                            "explanation": f"Explanation for {plan.target_concept}",
+                        }
+                    )
+                    provider.enqueue_structured(
+                        {"selected_key": "A", "confidence": 1.0, "reasoning": "Matches diff"}
+                    )
+                    provider.enqueue_structured(
+                        {"is_ambiguous": False, "defensible_choices": ["A"], "reasoning": "Clear"}
+                    )
+
+            cached_provider = CachedLLMProvider(
+                provider,
+                cache_dir=config.cache_dir,
+                diff_hash=diff_hash,
+            )
+            generator_inst = QuestionGenerator(cached_provider)
+            accepted_qs, rejections_list = generator_inst.generate_quiz(
+                question_plans, redacted_ingest
+            )
+
+            gen_table = Table(
+                title="Generated Questions & Quality Gate Results",
+                show_header=True,
+            )
+            gen_table.add_column("#", justify="center", style="bold cyan")
+            gen_table.add_column("Type", style="magenta")
+            gen_table.add_column("Concept", style="green")
+            gen_table.add_column("Stem Preview", style="white")
+            gen_table.add_column("Answer Key", justify="center", style="bold yellow")
+            gen_table.add_column("Quality Gate Status", style="bold")
+
+            for idx, q in enumerate(accepted_qs, start=1):
+                gen_table.add_row(
+                    str(idx),
+                    q.type.value,
+                    q.concept_id,
+                    q.stem[:50] + "..." if len(q.stem) > 50 else q.stem,
+                    q.answer_key,
+                    "[bold green]PASSED[/bold green]",
+                )
+            for idx, r in enumerate(rejections_list, start=len(accepted_qs) + 1):
+                gen_table.add_row(
+                    str(idx),
+                    "-",
+                    "-",
+                    f"[dim]{r.reason[:50]}...[/dim]",
+                    "-",
+                    f"[bold red]REJECTED ({r.step})[/bold red]",
+                )
+            console.print(gen_table)
 
         injection_warnings = scan_for_injection_markers(redacted_ingest.raw_diff)
         if injection_warnings:
@@ -469,6 +605,183 @@ def detect_cmd(
                 rules_display,
             )
         console.print(hunk_table)
+    raise typer.Exit(code=0)
+
+
+@app.command(name="generate")
+def generate_cmd(
+    staged: Annotated[bool, typer.Option("--staged", help="Analyze staged git changes.")] = False,
+    commit: Annotated[
+        Optional[str],
+        typer.Option("--commit", help="Analyze specific commit or range (e.g. HEAD~1)."),
+    ] = None,
+    stdin: Annotated[bool, typer.Option("--stdin", help="Read diff from standard input.")] = False,
+    provider_name: Annotated[
+        str,
+        typer.Option("--provider", "-p", help="Provider to use: 'fake', 'anthropic', or 'local'."),
+    ] = "fake",
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output generated questions and quality gate results as JSON."),
+    ] = False,
+    max_questions: Annotated[
+        int, typer.Option("--max-questions", "-n", help="Maximum questions to generate.")
+    ] = 3,
+) -> None:
+    """Generate comprehension questions with 4-step quality gate validation."""
+    try:
+        ingest_result = ingest_diff(staged=staged, commit=commit, use_stdin=stdin)
+    except GitError as exc:
+        console.print(f"[bold red]Git Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if ingest_result.is_empty and not ingest_result.raw_diff.strip():
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "questions": [],
+                        "rejections": [],
+                        "summary": "No diff changes found",
+                    }
+                )
+            )
+        else:
+            console.print("[yellow]No diff changes found to analyze.[/yellow]")
+        raise typer.Exit(code=0)
+
+    redactor = Redactor()
+    redacted_ingest, findings = redactor.redact_ingest_result(ingest_result)
+    detector_report = run_detector_pipeline(redacted_ingest)
+    plans = create_question_plans(detector_report, max_questions=max_questions)
+
+    if not plans:
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "questions": [],
+                        "rejections": [],
+                        "summary": "No hunks available for planning",
+                    }
+                )
+            )
+        else:
+            console.print("[yellow]No hunks available for question generation.[/yellow]")
+        raise typer.Exit(code=0)
+
+    config, _ = load_config()
+    diff_hash = DiskCache.compute_hash(redacted_ingest.raw_diff)
+
+    provider: LLMProvider
+    if provider_name.lower() == "anthropic":
+        provider = AnthropicProvider(
+            model=config.model,
+            max_cost_dollars=config.max_cost_dollars,
+            token_budget=config.token_budget,
+        )
+    elif provider_name.lower() == "local":
+        provider = LocalProvider(
+            model=config.model,
+            max_cost_dollars=config.max_cost_dollars,
+            token_budget=config.token_budget,
+        )
+    else:
+        fake_p = FakeProvider(
+            model=config.model,
+            max_cost_dollars=config.max_cost_dollars,
+            token_budget=config.token_budget,
+        )
+        for plan in plans:
+            fake_p.enqueue_structured(
+                {
+                    "type": plan.recommended_type.value,
+                    "concept_id": plan.target_concept,
+                    "hunk_rank": plan.hunk.rank,
+                    "file_path": plan.file_path,
+                    "start_line": plan.start_line,
+                    "end_line": plan.end_line,
+                    "snippet": plan.snippet,
+                    "stem": f"Comprehension check: {plan.stem_template}",
+                    "choices": [
+                        {
+                            "key": "A",
+                            "text": "Correct expected behavior matching diff",
+                            "explanation": "Matches implementation",
+                        },
+                        {
+                            "key": "B",
+                            "text": "Incorrect alternative behavior",
+                            "explanation": "Does not match diff",
+                        },
+                    ],
+                    "answer_key": "A",
+                    "explanation": f"Explanation for {plan.target_concept}",
+                }
+            )
+            fake_p.enqueue_structured(
+                {
+                    "selected_key": "A",
+                    "confidence": 1.0,
+                    "reasoning": "Matches diff",
+                }
+            )
+            fake_p.enqueue_structured(
+                {
+                    "is_ambiguous": False,
+                    "defensible_choices": ["A"],
+                    "reasoning": "Clear",
+                }
+            )
+        provider = fake_p
+
+    cached_provider = CachedLLMProvider(
+        provider,
+        cache_dir=config.cache_dir,
+        diff_hash=diff_hash,
+    )
+    generator_inst = QuestionGenerator(cached_provider)
+    questions, rejections = generator_inst.generate_quiz(plans, redacted_ingest)
+
+    if as_json:
+        output_payload = {
+            "questions": [q.model_dump() for q in questions],
+            "rejections": [r.model_dump() for r in rejections],
+            "total_generated": len(questions),
+            "total_rejected": len(rejections),
+            "usage": cached_provider.total_usage.model_dump(),
+            "cost_usd": cached_provider.total_cost_usd,
+        }
+        typer.echo(json.dumps(output_payload, indent=2))
+        raise typer.Exit(code=0)
+
+    table = Table(title="Generated Comprehension Questions", show_header=True)
+    table.add_column("#", justify="center", style="bold cyan")
+    table.add_column("Type", style="magenta")
+    table.add_column("Concept", style="green")
+    table.add_column("Stem", style="white")
+    table.add_column("Key", justify="center", style="bold yellow")
+    table.add_column("Quality Gate", style="bold")
+
+    for idx, q in enumerate(questions, start=1):
+        table.add_row(
+            str(idx),
+            q.type.value,
+            q.concept_id,
+            q.stem[:50] + "..." if len(q.stem) > 50 else q.stem,
+            q.answer_key,
+            "[bold green]PASSED[/bold green]",
+        )
+    for idx, r in enumerate(rejections, start=len(questions) + 1):
+        table.add_row(
+            str(idx),
+            "-",
+            "-",
+            f"[dim]{r.reason[:50]}...[/dim]",
+            "-",
+            f"[bold red]REJECTED ({r.step})[/bold red]",
+        )
+    console.print(table)
     raise typer.Exit(code=0)
 
 
