@@ -385,3 +385,77 @@ def test_scripted_session_blank_inputs_skipped(quiz_questions: list[Question]) -
     breakdown = runner.run()
     assert breakdown.total_questions == 3
     assert breakdown.correct_count == 3
+
+
+def test_cli_quiz_json_on_skip(cli_runner: CliRunner) -> None:
+    """Verify emc quiz --skip --json emits valid machine-readable JSON."""
+    res = cli_runner.invoke(app, ["quiz", "--skip", "--json"])
+    assert res.exit_code == 0
+    data = json.loads(res.stdout)
+    assert data["status"] == "skipped"
+    assert data["passed"] is True
+
+
+def test_cli_quiz_json_on_ci_non_interactive(
+    cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify emc quiz --json in CI environment emits valid machine-readable JSON."""
+    monkeypatch.setenv("CI", "true")
+    res = cli_runner.invoke(app, ["quiz", "--json"])
+    assert res.exit_code == 0
+    data = json.loads(res.stdout)
+    assert data["status"] == "skipped"
+    assert data["reason"] == "non_interactive_ci"
+    assert data["passed"] is True
+
+
+def test_cli_quiz_skip_disabled_by_config(
+    cli_runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify emc quiz --skip fails with exit code 1 when skip_allowed=false in .emc.toml."""
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / ".emc.toml"
+    config_file.write_text("[emc]\nskip_allowed = false\n", encoding="utf-8")
+
+    res = cli_runner.invoke(app, ["quiz", "--skip"])
+    assert res.exit_code == 1
+    assert "Quiz skipping is disabled by configuration" in res.stdout
+
+    # Also test JSON format error
+    res_json = cli_runner.invoke(app, ["quiz", "--skip", "--json"])
+    assert res_json.exit_code == 1
+    data = json.loads(res_json.stdout)
+    assert data["error"] == "skip_not_allowed"
+
+
+def test_cli_quiz_quoted_scripted_answers_with_commas(
+    cli_runner: CliRunner, sample_diff: str
+) -> None:
+    """Verify scripted answers containing commas inside quotes are not split."""
+    # Free-text answer has a comma inside quotes
+    answers_str = 'A, A, "The authority must be typed as Signer, to ensure signature check."'
+    res = cli_runner.invoke(
+        app,
+        ["quiz", "--stdin", "--provider", "fake", "--answers", answers_str],
+        input=sample_diff,
+    )
+    assert res.exit_code == 0
+    assert "COMPREHENSION CHECK PASSED" in res.stdout
+
+
+def test_session_runner_accepts_multiline_string(quiz_questions: list[Question]) -> None:
+    """Verify SessionRunner accepts a multiline string directly as input_stream."""
+    input_str = (
+        "A\nA\nThe authority must be typed as Signer to ensure cryptographic signature check.\n"
+    )
+    console = Console(record=True)
+    runner = SessionRunner(
+        questions=quiz_questions,
+        console=console,
+        input_stream=input_str,
+        base_points=10.0,
+    )
+    breakdown = runner.run()
+    assert breakdown.total_questions == 3
+    assert breakdown.correct_count == 3
+    assert breakdown.passed is True

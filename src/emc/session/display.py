@@ -102,6 +102,12 @@ def render_question_panel(
             style="italic cyan",
         )
         elements.append(explain_note)
+    elif question.type == QuestionType.SPOT_THE_BUG:
+        bug_note = Text(
+            "Enter the line number (or code snippet) containing the bug.",
+            style="italic cyan",
+        )
+        elements.append(bug_note)
 
     # 6. Hints status footer
     elements.append(Text(""))

@@ -36,10 +36,17 @@ def match_choice_key(user_answer: str, question: Question) -> bool:
     if cleaned == expected_key:
         return True
 
-    # "Option A" or "Choice A"
+    # "Option A", "Choice A", "Option 1", "Choice 1"
     match = re.match(r"^(?:OPTION|CHOICE)\s+([A-Z0-9]+)$", cleaned)
-    if match and match.group(1) == expected_key:
-        return True
+    if match:
+        token = match.group(1)
+        if token == expected_key:
+            return True
+        if token.isdigit():
+            idx = int(token) - 1
+            if 0 <= idx < len(question.choices):
+                if question.choices[idx].key.strip().upper() == expected_key:
+                    return True
 
     # Numeric selection matching (1 -> A, 2 -> B, etc.)
     if cleaned.isdigit():
@@ -48,16 +55,22 @@ def match_choice_key(user_answer: str, question: Question) -> bool:
             if question.choices[idx].key.strip().upper() == expected_key:
                 return True
 
-    # Full text matching against correct choice text
-    correct_choice = question.get_correct_choice()
-    if correct_choice:
-        normalized_choice_text = correct_choice.text.strip().lower()
-        normalized_user = user_answer.strip().lower()
-        if normalized_user == normalized_choice_text:
-            return True
-        # If user typed substantial portion of choice text (>= 15 chars)
-        if len(normalized_user) >= 15 and normalized_user in normalized_choice_text:
-            return True
+    # Full and partial text matching against choices
+    normalized_user = user_answer.strip().lower()
+    if normalized_user and question.choices:
+        # First: check if user typed an exact match for ANY choice
+        for choice in question.choices:
+            if normalized_user == choice.text.strip().lower():
+                return choice.key.strip().upper() == expected_key
+
+        # Second: check if user typed a substantial substring (>= 15 chars)
+        if len(normalized_user) >= 15:
+            matching_choices = [
+                c for c in question.choices if normalized_user in c.text.strip().lower()
+            ]
+            # Must uniquely match exactly one choice to avoid ambiguous distractor credit
+            if len(matching_choices) == 1:
+                return matching_choices[0].key.strip().upper() == expected_key
 
     return False
 
@@ -69,6 +82,19 @@ def match_spot_the_bug(user_answer: str, question: Question) -> bool:
         return True
 
     cleaned = normalize_input(user_answer).lower()
+
+    # If the user typed a valid choice index (e.g. '2' when choices are A, B)
+    # and match_choice_key already returned False, the user explicitly selected
+    # an incorrect choice. Do NOT re-interpret it as a line number.
+    if cleaned.isdigit() and question.choices:
+        choice_idx = int(cleaned)
+        if 1 <= choice_idx <= len(question.choices):
+            return False
+
+    # Also if user explicitly typed "Option X" or "Choice X" where X was wrong
+    if re.match(r"^(?:option|choice)\s+[a-z0-9]+$", cleaned):
+        return False
+
     expected_key = question.answer_key.strip().lower()
 
     # Extract digits (e.g. "line 42" -> ["42"])
@@ -84,6 +110,11 @@ def match_spot_the_bug(user_answer: str, question: Question) -> bool:
     if correct_choice and nums:
         choice_nums = re.findall(r"\b\d+\b", correct_choice.text)
         if any(num in choice_nums for num in nums):
+            return True
+
+    # If question has line range and explicit line mention ("line 41")
+    if nums and ("line" in cleaned or "l" in cleaned):
+        if any(str(line) in nums for line in range(question.start_line, question.end_line + 1)):
             return True
 
     return False

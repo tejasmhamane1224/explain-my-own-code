@@ -167,5 +167,21 @@
   2. Structured Rubric Judge: For `explain-back` questions, evaluate user explanations against predefined rubric criteria (`RubricCriterion`) using structured LLM output (`RubricEvaluationLLMOutput`), awarding itemized points and constructive feedback.
   3. Deterministic Offline Fallback: When LLM providers are unavailable or offline, evaluate rubric criteria deterministically using required taxonomy concepts and keyword stem set intersection, ensuring reliable testability and offline developer utility.
 
+## ADR-020: Hardened Deterministic Matchers, Prompt Injection Rubric Defenses, and CLI JSON Contract Fidelity
+- **Status**: Accepted
+- **Context**: In review of Stage 4, several edge cases and contract vulnerabilities were identified:
+  1. `deterministic_rubric_fallback` awarded 100% credit on criteria for arbitrary English inputs containing generic non-stopwords (e.g. "my bank account") or taxonomy framework prefixes (e.g. "anchor boat ship ocean" matched `anchor.missing_signer`).
+  2. Free-text `explain-back` evaluations did not defend against adversarial prompt injections or override phrases in developer answers.
+  3. `match_choice_key` did not resolve numeric choice phrases ("Option 1", "Choice 1") and suffered from substring collisions where typing an incorrect distractor text matched the correct choice if it was a substring.
+  4. Spot-the-bug matching re-interpreted invalid choice selection numbers ("2" for Choice B) as line numbers if Choice A's text mentioned line 2.
+  5. `emc quiz --json` violated the JSON contract by printing Rich text on `--skip`, CI bypass, empty diff, and errors.
+- **Decision**:
+  1. Rubric Hardening: Strip taxonomy namespace prefixes (`anchor.`, `ts.`, `math.`, `generic.`), require word-boundary regex matching for concept tokens, filter out rubric meta-words, and require substantive keyword overlap (>= 2 distinct domain keywords).
+  2. Prompt Injection Defense: Scan developer explanations for prompt injection markers (`scan_for_injection_markers`) and evaluation overrides (`ignore previous instructions`, `passed: true`), failing immediately with zero score.
+  3. Deterministic Matcher Disambiguation: Support "Option 1" / "Choice 1" numeric choices, check exact matches across all choices before partial matching, and reject ambiguous substrings matching multiple choices.
+  4. Spot-the-bug Choice Index Protection: Treat numbers within `1..len(choices)` as choice selections, preventing fallthrough into line number matching.
+  5. CLI JSON Contract: Guarantee valid JSON payloads on all exit paths when `--json` is enabled, and enforce `skip_allowed = false` configuration.
+
+
 
 

@@ -72,7 +72,11 @@ class SessionRunner:
         # 2. Prepare scripted or interactive input source
         inputs_iter: Iterator[str] | None = None
         if self.input_stream is not None:
-            if isinstance(self.input_stream, (list, tuple)):
+            if isinstance(self.input_stream, str):
+                inputs_iter = iter(
+                    [line.strip() for line in self.input_stream.splitlines() if line.strip()]
+                )
+            elif isinstance(self.input_stream, (list, tuple)):
                 inputs_iter = iter(self.input_stream)
             elif hasattr(self.input_stream, "readline"):
                 inputs_iter = (line.rstrip("\r\n") for line in self.input_stream)
@@ -129,8 +133,15 @@ class SessionRunner:
             # Interactive prompt loop for current question
             while True:
                 if question.choices:
+                    choice_keys = [c.key for c in question.choices]
+                    keys_label = (
+                        f"{choice_keys[0]}-{choice_keys[-1]}"
+                        if len(choice_keys) > 1
+                        else choice_keys[0]
+                    )
                     prompt_str = (
-                        "[bold cyan]Your answer [A-D, (H)int, (S)kip, (Q)uit]: [/bold cyan]"
+                        f"[bold cyan]Your answer [{keys_label}, "
+                        "(H)int, (S)kip, (Q)uit]: [/bold cyan]"
                     )
                 elif question.type == QuestionType.EXPLAIN_BACK:
                     prompt_str = (

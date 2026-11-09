@@ -12,6 +12,7 @@ from emc.grade.models import (
     RubricCriterionEvaluation,
     RubricEvaluation,
 )
+from emc.ingest import scan_for_injection_markers
 from emc.llm import LLMProvider, ProviderError
 from emc.questions.schema import Question, RubricCriterion
 
@@ -37,6 +38,31 @@ class RubricEvaluationLLMOutput(BaseModel):
     overall_feedback: str
     passed: bool
 
+
+_RUBRIC_META_WORDS = {
+    "mentions",
+    "explains",
+    "explanation",
+    "description",
+    "demonstrates",
+    "requires",
+    "verifies",
+    "criterion",
+    "evaluated",
+    "understanding",
+    "addressed",
+    "covered",
+    "points",
+    "account",
+    "code",
+    "line",
+    "diff",
+    "file",
+    "anchor",
+    "generic",
+    "math",
+    "ts",
+}
 
 _STOP_WORDS = {
     "the",
@@ -78,7 +104,22 @@ _STOP_WORDS = {
     "does",
     "did",
     "code",
-}
+    "will",
+    "would",
+    "shall",
+    "should",
+    "can",
+    "could",
+    "may",
+    "might",
+    "must",
+    "not",
+    "no",
+    "nor",
+    "too",
+    "very",
+    "just",
+} | _RUBRIC_META_WORDS
 
 
 def _extract_keywords(text: str) -> set[str]:
@@ -98,7 +139,10 @@ def deterministic_rubric_fallback(
     and descriptive keywords specified in the question rubric.
     """
     cleaned = user_answer.strip().lower()
-    if len(cleaned) < 5:
+    user_words = _extract_keywords(cleaned)
+
+    # Require substantive explanation content (at least 2 domain words and 15 chars)
+    if len(cleaned) < 15 or len(user_words) < 2:
         return RubricEvaluation(
             criteria_results=[
                 RubricCriterionEvaluation(
@@ -119,7 +163,7 @@ def deterministic_rubric_fallback(
             ],
             total_score=0.0,
             max_score=float(sum(c.points for c in question.rubric)) if question.rubric else 1.0,
-            overall_feedback="Explanation too brief or empty.",
+            overall_feedback="Explanation too brief or lacking substantive domain keywords.",
             passed=False,
         )
 
@@ -138,27 +182,42 @@ def deterministic_rubric_fallback(
     total_earned = 0.0
     total_possible = 0.0
 
-    user_words = _extract_keywords(cleaned)
-
     for crit in criteria:
         max_pts = float(crit.points)
         total_possible += max_pts
 
-        # 1. Concept matching
+        # 1. Concept matching: check explicit required_concepts if specified,
+        # otherwise strip namespace prefix from question.concept_id.
         concept_match = False
-        all_concepts = list(crit.required_concepts) + [question.concept_id]
-        for concept in all_concepts:
-            concept_tokens = [t for t in re.split(r"[._\s]+", concept.lower()) if len(t) >= 3]
-            if any(token in cleaned for token in concept_tokens):
-                concept_match = True
+        target_concepts = list(crit.required_concepts)
+        if not target_concepts:
+            clean_concept_id = re.sub(r"^(?:anchor|ts|generic|math)\.", "", question.concept_id)
+            target_concepts = [clean_concept_id]
+
+        for concept in target_concepts:
+            clean_concept = re.sub(r"^(?:anchor|ts|generic|math)\.", "", concept.lower())
+            concept_tokens = [
+                t
+                for t in re.split(r"[._\s]+", clean_concept)
+                if len(t) >= 3 and t not in _RUBRIC_META_WORDS
+            ]
+            for token in concept_tokens:
+                # Word-boundary regex search to prevent substring collisions
+                if re.search(rf"\b{re.escape(token)}\b", cleaned):
+                    concept_match = True
+                    break
+            if concept_match:
                 break
 
         # 2. Keyword density matching
         crit_keywords = _extract_keywords(f"{crit.name} {crit.description}")
         matched_keywords = user_words.intersection(crit_keywords)
-        keyword_match = len(matched_keywords) >= 1 or (
-            len(crit_keywords) > 0 and len(matched_keywords) / len(crit_keywords) >= 0.25
-        )
+        if len(crit_keywords) <= 1:
+            keyword_match = len(matched_keywords) >= 1
+        else:
+            keyword_match = len(matched_keywords) >= 2 and (
+                len(matched_keywords) / len(crit_keywords) >= 0.25
+            )
 
         passed = concept_match or keyword_match
         pts = max_pts if passed else 0.0
@@ -226,6 +285,32 @@ def grade_rubric(
             is_skipped=True,
         )
 
+    # Prompt injection check
+    injection_warnings = scan_for_injection_markers(raw)
+    adversarial_override = bool(
+        re.search(
+            r"\b(?:ignore\s+(?:all|previous|above)\s+instructions|system\s+prompt|passed\s*:\s*true)\b",
+            raw,
+            re.IGNORECASE,
+        )
+    )
+    if injection_warnings or adversarial_override:
+        return GradeResult(
+            question_id=question.id,
+            question_type=question.type,
+            concept_id=question.concept_id,
+            user_answer=user_answer,
+            is_correct=False,
+            base_points=base_points,
+            points_awarded=0.0,
+            max_points=base_points,
+            hints_used=hints_used,
+            hint_penalty_percent=0.0,
+            explanation=question.explanation,
+            feedback="Adversarial or prompt injection pattern detected in answer.",
+            is_skipped=False,
+        )
+
     rubric_eval: RubricEvaluation | None = None
 
     if provider is not None:
@@ -261,8 +346,8 @@ def grade_rubric(
                     RubricCriterionEvaluation(
                         criterion_name=c.criterion_name,
                         passed=c.passed,
-                        points_awarded=c.points_awarded,
-                        max_points=c.max_points,
+                        points_awarded=max(0.0, min(float(c.points_awarded), float(c.max_points))),
+                        max_points=max(0.0, float(c.max_points)),
                         feedback=c.feedback,
                     )
                     for c in llm_result.criteria
@@ -271,8 +356,8 @@ def grade_rubric(
                 total_max = sum(c.max_points for c in criteria_results)
                 rubric_eval = RubricEvaluation(
                     criteria_results=criteria_results,
-                    total_score=total_earned,
-                    max_score=total_max,
+                    total_score=round(total_earned, 2),
+                    max_score=round(total_max, 2),
                     overall_feedback=llm_result.overall_feedback,
                     passed=llm_result.passed,
                 )
@@ -292,9 +377,11 @@ def grade_rubric(
         if rubric_eval.max_score > 0
         else (1.0 if rubric_eval.passed else 0.0)
     )
+    score_ratio = max(0.0, min(1.0, score_ratio))
 
     penalty = calculate_hint_penalty(hints_used, penalty_per_hint, max_hint_penalty)
     awarded = round(base_points * score_ratio * (1.0 - penalty), 2)
+    awarded = max(0.0, min(base_points, awarded))
     is_correct = rubric_eval.passed or (score_ratio * 100.0 >= passing_threshold)
 
     penalty_desc = f" ({int(penalty * 100)}% hint penalty)" if penalty > 0 else ""

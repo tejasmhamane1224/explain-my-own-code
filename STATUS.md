@@ -10,7 +10,7 @@
 - [x] **Stage 1: Ingest + Redact + Injection Fixtures**: Git diff ingestion (staged `git diff --cached`, commit range `git diff <rev>`, stdin), structured hunk splitting with exact 1-indexed line mapping (`DiffLine`, `DiffHunk`, `FileDiff`), `.emcignore` and lockfile/asset path filtering, diff/file size caps, secret redaction engine (Solana keypair byte arrays, Solana Base58 private keys, EVM hex private keys, BIP-39 mnemonic phrases, API tokens including Google and HuggingFace, .env values, generic credentials) with 100% recall on secrets fixture set, untrusted diff encapsulation, prompt injection fixture suite (`fixtures/injections/`), `emc quiz --dry-run` displaying Rich summary, prompt injection warnings, and encapsulated redacted payload (57 tests passed).
 - [x] **Stage 2: Detectors + Ranking (No LLM)**: Solana/Anchor rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, close/realloc, remaining_accounts, unverified CPI), TS wallet rules (lamports/decimals, base units, address validation, RPCs), generic rules, hunk ranking, taxonomy alignment (`concepts.yaml`), 32 positive & negative fixtures with 100% test pass rate, plus 16 adversarial edge-case scenarios covering multiline attributes, canonical bumps, macro log safety, and Windows path normalization (116 passed tests).
 - [x] **Stage 3: LLM Layer + Generation + Validator**: Abstract provider interface (`LLMProvider`, `AnthropicProvider`, `FakeProvider`, `LocalProvider`), token usage & cost tracking, content-hashed disk cache under `.emc/cache/` with `--max-cost` and token budget enforcement, 5 canonical question schemas, question planner, 4-step quality gate (`snippet_grounding`, `no_answer_leak`, `independent_solvability`, `non_ambiguity`, `injection_instruction`), single-retry regeneration recovery, acceptance tests covering all rejection paths (177 passed tests).
-- [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers, LLM rubric judge for free-text explain-back questions with offline keyword fallback, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (207 passed tests).
+- [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers with disambiguation, LLM rubric judge for free-text explain-back questions with offline keyword fallback and prompt injection defenses, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (219 passed tests).
 - [ ] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl`, Leitner box mastery tracking, `emc report`, `emc review`.
 - [ ] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit hook installer, Comprehension trailer, CI bypass.
 - [ ] **Stage 7: Evaluation Suite (`emc eval`)**: 30+ seeded diffs (20 Anchor, 10 TS), ablation vs naive single-prompt baseline, `docs/EVAL.md`.
@@ -97,23 +97,26 @@
    - `ScoreBreakdown`: Session-level aggregation computing total points, percentage, hint counts, pass/fail threshold verdict, and results list.
 2. **Deterministic Grading Engine (`src/emc/grade/deterministic.py`)**:
    - Exact case/punctuation-insensitive key matching (`A`, `a`, `Choice A`, `Option A`, `(A)`).
-   - 1-based numeric option selection (`1` -> `A`, `2` -> `B`).
-   - Verbatim and partial text matching against distractor choices.
-   - Spot-the-bug line number matching (`line 41`, `41`) against mutant targets.
+   - 1-based numeric option selection (`1` -> `A`, `2` -> `B`, `Option 1`, `Choice 1`).
+   - Distractor collision defense: Exact matching against all distractors prior to partial matching, rejecting ambiguous multi-distractor substrings.
+   - Spot-the-bug line number matching (`line 41`, `41`) with choice index disambiguation (bare numbers `1..N` treated as choice selections rather than falsely matching line numbers).
    - Progressive hint ladder penalties: -25% per revealed hint, capped at -75%.
 3. **Rubric-Based LLM Judge & Deterministic Fallback (`src/emc/grade/rubric.py`)**:
-   - Structured LLM evaluation for `explain-back` free-text responses via `RubricEvaluationLLMOutput`.
-   - Deterministic offline fallback using taxonomy concept matching and keyword set intersection, ensuring reliable testability and offline utility.
+   - Structured LLM evaluation for `explain-back` free-text responses via `RubricEvaluationLLMOutput` with strict score clamping.
+   - Deterministic offline fallback using taxonomy concept matching (stripping category prefixes) and domain keyword set intersection (filtering rubric meta-words and requiring multi-token overlap).
+   - Prompt injection defense scanning developer answers for override markers (`ignore previous instructions`, `passed: true`, delimiter collision) with instant rejection.
 4. **Rich Terminal Quiz Interface (`src/emc/session/`)**:
    - `display.py`: Syntax-highlighted diff snippet panels (monokai), mutant bug boxes, question stems, styled choices, hint disclaimers, immediate feedback panels, and final summary tables with verdict banners.
    - `runner.py` (`SessionRunner`): Interactive question loop with hint ladder commands (`H`/`hint`), skip commands (`S`/`skip`), and quit commands (`Q`/`quit`).
-   - Scriptable session driver: Accepts sequence/stream of inputs for deterministic non-TTY testing.
+   - Scriptable session driver: Accepts sequence, iterator, or multiline string of inputs for deterministic non-TTY testing.
    - CI & Non-TTY Bypass: Automatically detects `CI=true` or non-terminal environments and exits 0 cleanly unless a scripted input stream is provided.
 5. **CLI Integration (`src/emc/cli.py`)**:
    - Wired `emc quiz` to execute interactive and scripted sessions on `--staged`, `--commit <rev>`, or `--stdin`.
-   - Supports `--provider` (`fake`, `anthropic`, `local`), `--model`, `--max-cost`, `--answers`, and `--json`.
+   - Supports `--provider` (`fake`, `anthropic`, `local`), `--model`, `--max-cost`, `--answers` (with CSV quote and newline support), and `--json`.
+   - Strict JSON contract fidelity on all early returns, skips, CI bypasses, and errors.
+   - Configuration enforcement: Blocks `--skip` when `skip_allowed = false` in `.emc.toml`.
 6. **Acceptance Test Suite (`tests/test_session.py` & `tests/test_grade.py`)**:
-   - 207 total passing unit and acceptance tests covering: perfect scores, progressive hint ladder deductions, hint exhaustion, wrong answers, mixed scoring, rubric grading with LLM & fallback, skip commands, quit aborts, unexpected EOF, blank input filtering, CI non-interactive bypass, CI scripted execution, and machine-readable JSON output.
+   - 219 total passing unit and acceptance tests covering: perfect scores, progressive hint ladder deductions, hint exhaustion, wrong answers, mixed scoring, rubric grading with LLM & fallback, prompt injection rejection, distractor substring collision rejection, spot-the-bug choice index disambiguation, skip commands, quit aborts, unexpected EOF, blank input filtering, CI non-interactive bypass, CI scripted execution, and machine-readable JSON output on all paths.
 
 ---
 
@@ -121,7 +124,7 @@
 To verify Stage 4 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (207 passing tests)
+# 1. Run complete unit and acceptance test suite (219 passing tests)
 pytest
 
 # 2. Check code formatting and linting

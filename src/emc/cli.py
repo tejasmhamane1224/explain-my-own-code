@@ -228,9 +228,41 @@ def quiz_cmd(
         typer.Option("--json", help="Output session results as machine-readable JSON."),
     ] = False,
 ) -> None:
-    """Start an interactive comprehension quiz on a diff."""
+    config_result = load_config()
+    config = config_result.config
+
     if skip:
-        console.print("[dim]Comprehension quiz skipped by developer (--skip).[/dim]")
+        if not config.skip_allowed:
+            if as_json:
+                typer.echo(
+                    json.dumps(
+                        {
+                            "error": "skip_not_allowed",
+                            "message": (
+                                "Quiz skipping is disabled by configuration (skip_allowed = false)."
+                            ),
+                        }
+                    )
+                )
+            else:
+                console.print(
+                    "[bold red]Quiz skipping is disabled by configuration "
+                    "(skip_allowed = false).[/bold red]"
+                )
+            raise typer.Exit(code=1)
+
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "skipped",
+                        "message": "Comprehension quiz skipped by developer (--skip).",
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print("[dim]Comprehension quiz skipped by developer (--skip).[/dim]")
         raise typer.Exit(code=0)
 
     if dry_run:
@@ -509,25 +541,65 @@ def quiz_cmd(
     # Scripted input parsing
     scripted_inputs: list[str] | None = None
     if answers is not None:
-        scripted_inputs = [a.strip() for a in re.split(r"[,\n]", answers) if a.strip()]
+        if "\n" in answers:
+            scripted_inputs = [line.strip() for line in answers.splitlines() if line.strip()]
+        else:
+            try:
+                import csv
+
+                reader = csv.reader([answers], skipinitialspace=True)
+                items = next(reader)
+                scripted_inputs = [item.strip() for item in items if item.strip()]
+            except Exception:
+                scripted_inputs = [a.strip() for a in re.split(r"[,\n]", answers) if a.strip()]
 
     # Safe CI / non-TTY detection: never hang, exit 0 with notice when no scripted inputs
     is_ci = os.getenv("CI", "").lower() in ("true", "1")
     if scripted_inputs is None and (not sys.stdin.isatty() or is_ci):
-        console.print(
-            "[dim]Non-interactive terminal or CI environment detected. "
-            "Skipping comprehension quiz.[/dim]"
-        )
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "skipped",
+                        "reason": "non_interactive_ci",
+                        "message": (
+                            "Non-interactive terminal or CI environment detected. "
+                            "Skipping comprehension quiz."
+                        ),
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print(
+                "[dim]Non-interactive terminal or CI environment detected. "
+                "Skipping comprehension quiz.[/dim]"
+            )
         raise typer.Exit(code=0)
 
     try:
         ingest_result = ingest_diff(staged=staged, commit=commit, use_stdin=stdin)
     except GitError as exc:
-        console.print(f"[bold red]Git Error:[/bold red] {exc}")
+        if as_json:
+            typer.echo(json.dumps({"error": "git_error", "message": str(exc)}))
+        else:
+            console.print(f"[bold red]Git Error:[/bold red] {exc}")
         raise typer.Exit(code=1)
 
     if ingest_result.is_empty and not ingest_result.raw_diff.strip():
-        console.print("[yellow]No diff changes found to analyze.[/yellow]")
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "empty_diff",
+                        "message": "No diff changes found to analyze.",
+                        "total_questions": 0,
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print("[yellow]No diff changes found to analyze.[/yellow]")
         raise typer.Exit(code=0)
 
     redactor = Redactor()
@@ -537,13 +609,23 @@ def quiz_cmd(
     question_plans = create_question_plans(detector_report, max_questions=3)
 
     if not question_plans:
-        console.print(
-            "[yellow]No actionable diff hunks found for comprehension questions.[/yellow]"
-        )
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "no_actionable_hunks",
+                        "message": "No actionable diff hunks found for comprehension questions.",
+                        "total_questions": 0,
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print(
+                "[yellow]No actionable diff hunks found for comprehension questions.[/yellow]"
+            )
         raise typer.Exit(code=0)
 
-    config_result = load_config()
-    config = config_result.config
     resolved_model = model or config.model
     resolved_max_cost = max_cost if max_cost is not None else config.max_cost_dollars
     diff_hash = DiskCache.compute_hash(redacted_ingest.raw_diff)
@@ -620,14 +702,31 @@ def quiz_cmd(
     try:
         accepted_qs, rejections = generator_inst.generate_quiz(question_plans, redacted_ingest)
     except BudgetExceededError as exc:
-        console.print(f"[bold red]Budget Exceeded:[/bold red] {exc}")
+        if as_json:
+            typer.echo(json.dumps({"error": "budget_exceeded", "message": str(exc)}))
+        else:
+            console.print(f"[bold red]Budget Exceeded:[/bold red] {exc}")
         raise typer.Exit(code=1)
 
     if not accepted_qs:
-        console.print(
-            "[yellow]Could not generate valid comprehension questions "
-            "passing quality gate.[/yellow]"
-        )
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "no_valid_questions",
+                        "message": (
+                            "Could not generate valid comprehension questions passing quality gate."
+                        ),
+                        "total_questions": 0,
+                        "passed": True,
+                    }
+                )
+            )
+        else:
+            console.print(
+                "[yellow]Could not generate valid comprehension questions "
+                "passing quality gate.[/yellow]"
+            )
         raise typer.Exit(code=0)
 
     session_console = Console(quiet=True) if as_json else console
