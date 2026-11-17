@@ -249,15 +249,68 @@
         var(--black);
     }
 
-    /* Flowing Indigo + Neon Red Canvas layered across the poster */
-    #nocturne-canvas {
+    /* Sculptural Nocturne Hands Artwork in Motion (replaces canvas wires) */
+    .hero-art-layer {
       position: absolute;
       inset: 0;
-      width: 100%;
-      height: 100%;
+      margin: 0;
       z-index: 2;
       pointer-events: none;
+      overflow: hidden;
+      mask-image: radial-gradient(78% 82% at 64% 52%, #000 50%, transparent 100%);
+      -webkit-mask-image: radial-gradient(78% 82% at 64% 52%, #000 50%, transparent 100%);
+    }
+
+    .hero-art-img {
+      position: absolute;
+      inset: -4% -4%;
+      width: 108%;
+      height: 108%;
+      object-fit: cover;
+      object-position: 68% 52%;
       mix-blend-mode: screen;
+      opacity: 0.9;
+      filter: contrast(1.12) saturate(1.18);
+      will-change: transform;
+      transform: translate3d(var(--px, 0px), var(--py, 0px), 0) scale(1.03);
+      transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .hero-art-grain {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.14;
+      mix-blend-mode: overlay;
+      background-image:
+        repeating-radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.22) 0 1px, transparent 1px 4px),
+        linear-gradient(125deg, rgba(78, 80, 222, 0.18), rgba(243, 46, 53, 0.12));
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes hero-art-drift {
+        0% {
+          scale: 1.03;
+          translate: 0px 0px;
+        }
+        50% {
+          scale: 1.075;
+          translate: -10px -8px;
+        }
+        100% {
+          scale: 1.03;
+          translate: 0px 0px;
+        }
+      }
+
+      .hero-art-img {
+        animation: hero-art-drift 14s ease-in-out infinite;
+      }
+
+      body.motion-paused .hero-art-img {
+        animation-play-state: paused;
+      }
     }
 
     .hero-inner {
@@ -887,7 +940,18 @@
 
   <main id="top">
     <section class="hero">
-      <canvas id="nocturne-canvas" aria-hidden="true"></canvas>
+      <figure class="hero-art-layer" aria-hidden="true">
+        <img
+          src="/hero-hands.jpg"
+          alt=""
+          width="1376"
+          height="768"
+          fetchpriority="high"
+          class="hero-art-img"
+          id="hero-art-img"
+        >
+        <div class="hero-art-grain"></div>
+      </figure>
 
       <div class="container hero-inner">
         <div class="hero-meta-row">
@@ -1390,120 +1454,19 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
         }
       }
 
-      // 4. Nocturne Kinetic Indigo (#4E50DE) + Neon Red (#F32E35) Organic Tendril Canvas
-      const canvas = document.getElementById("nocturne-canvas");
+      // 4. Nocturne Kinetic Motion Controller (smooth parallax + Pause/Play accessibility)
+      const heroArt = document.getElementById("hero-art-img");
       const motionBtn = document.getElementById("motion-toggle");
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      let width = 0;
-      let height = 0;
-      let dpr = 1;
       let paused = prefersReduced.matches;
-      let rafId = 0;
-      let time = 12.4;
-      let pointerX = 0;
-      let pointerY = 0;
-
-      // Sculptural organic ribbons inspired by the Nocturne indigo/crimson botanical flow
-      const strands = Array.from({ length: 42 }, (_, i) => {
-        const ratio = i / 42;
-        const isCrimsonVein = i % 6 === 0;
-        return {
-          seed: i * 0.73 + 1.1,
-          baseX: 0.44 + (Math.sin(i * 1.9) * 0.24) + ratio * 0.14,
-          amp: 36 + (i % 7) * 18,
-          freq: 0.0042 + (i % 5) * 0.0011,
-          speed: 0.35 + (i % 6) * 0.09,
-          width: isCrimsonVein ? 1.45 : (1.1 + (i % 4) * 0.85),
-          color: isCrimsonVein
-            ? "rgba(243, 46, 53, 0.78)"
-            : (i % 3 === 0 ? "rgba(117, 119, 255, 0.52)" : "rgba(78, 80, 222, 0.68)"),
-          curl: (i % 2 === 0 ? 1 : -1) * (0.4 + (i % 5) * 0.18),
-        };
-      });
-
-      const spores = Array.from({ length: 48 }, (_, i) => ({
-        x: 0.28 + ((i * 37) % 100) / 145,
-        y: ((i * 53) % 100) / 100,
-        r: 0.9 + (i % 3) * 0.75,
-        phase: i * 0.9,
-        red: i % 4 === 0,
-      }));
-
-      function resize() {
-        const rect = canvas.getBoundingClientRect();
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
-        width = Math.max(1, rect.width);
-        height = Math.max(1, rect.height);
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        renderFrame(time);
-      }
-
-      function renderFrame(t) {
-        ctx.clearRect(0, 0, width, height);
-
-        // Luminous indigo core nebula behind tendrils
-        const cx = width * (0.58 + pointerX * 0.03);
-        const cy = height * (0.56 + pointerY * 0.03);
-        const glow = ctx.createRadialGradient(cx, cy, 12, cx, cy, Math.max(width, height) * 0.44);
-        glow.addColorStop(0, "rgba(78, 80, 222, 0.34)");
-        glow.addColorStop(0.5, "rgba(78, 80, 222, 0.12)");
-        glow.addColorStop(1, "rgba(8, 7, 11, 0)");
-        ctx.fillStyle = glow;
-        ctx.fillRect(0, 0, width, height);
-
-        // Sweeping luminous botanical tendrils
-        const segments = 34;
-        for (const s of strands) {
-          ctx.beginPath();
-          const startX = width * s.baseX + pointerX * 26 * s.curl;
-          for (let step = 0; step <= segments; step++) {
-            const p = step / segments;
-            const y = height * (1.06 - p * 1.12);
-            const fan = Math.pow(p, 1.35) * (s.curl * width * 0.18);
-            const wave1 = Math.sin(p * 6.2 + t * s.speed + s.seed) * s.amp * (0.35 + p);
-            const wave2 = Math.cos(p * 11.4 - t * (s.speed * 0.7) + s.seed) * (s.amp * 0.28);
-            const x = startX + fan + wave1 + wave2 + pointerX * p * 34;
-            if (step === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-          }
-          ctx.strokeStyle = s.color;
-          ctx.lineWidth = s.width;
-          ctx.lineCap = "round";
-          ctx.stroke();
-        }
-
-        // Floating luminous embers/spores
-        for (const sp of spores) {
-          const driftX = Math.sin(t * 0.55 + sp.phase) * 18;
-          const driftY = Math.cos(t * 0.42 + sp.phase) * 14;
-          const x = sp.x * width + driftX + pointerX * 14;
-          const y = sp.y * height + driftY + pointerY * 14;
-          const alpha = 0.28 + 0.42 * (0.5 + 0.5 * Math.sin(t * 1.1 + sp.phase));
-          ctx.beginPath();
-          ctx.arc(x, y, sp.r, 0, Math.PI * 2);
-          ctx.fillStyle = sp.red
-            ? `rgba(243, 46, 53, ${alpha.toFixed(2)})`
-            : `rgba(130, 134, 255, ${alpha.toFixed(2)})`;
-          ctx.fill();
-        }
-      }
-
-      function tick() {
-        if (paused) return;
-        time += 0.014;
-        renderFrame(time);
-        rafId = window.requestAnimationFrame(tick);
-      }
 
       function syncMotionUI() {
         document.body.classList.toggle("motion-paused", paused);
         if (motionBtn) {
           motionBtn.textContent = paused ? "Play Motion" : "Pause Motion";
+        }
+        if (paused && heroArt) {
+          heroArt.style.setProperty("--px", "0px");
+          heroArt.style.setProperty("--py", "0px");
         }
       }
 
@@ -1511,32 +1474,23 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
         motionBtn.addEventListener("click", () => {
           paused = !paused;
           syncMotionUI();
-          if (paused) {
-            window.cancelAnimationFrame(rafId);
-            renderFrame(time);
-          } else {
-            tick();
-          }
         });
       }
 
       window.addEventListener("pointermove", (event) => {
-        if (paused) return;
-        pointerX = (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
-        pointerY = (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
+        if (paused || !heroArt) return;
+        const nx = (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
+        const ny = (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
+        heroArt.style.setProperty("--px", `${(-nx * 16).toFixed(1)}px`);
+        heroArt.style.setProperty("--py", `${(-ny * 12).toFixed(1)}px`);
       }, { passive: true });
 
       prefersReduced.addEventListener("change", (event) => {
         paused = event.matches;
         syncMotionUI();
-        if (paused) window.cancelAnimationFrame(rafId);
-        else tick();
       });
 
-      window.addEventListener("resize", resize);
       syncMotionUI();
-      resize();
-      if (!paused) tick();
     })();
   </script>
 </body>
