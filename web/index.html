@@ -163,10 +163,11 @@
 
     .brand {
       font-family: var(--font-display);
-      font-size: 1.25rem;
+      font-size: 1.3rem;
       letter-spacing: 0.08em;
       color: var(--red);
       text-transform: uppercase;
+      white-space: nowrap;
     }
 
     nav.site-nav {
@@ -281,11 +282,9 @@
       inset: 0;
       z-index: 2;
       pointer-events: none;
-      opacity: 0.14;
-      mix-blend-mode: overlay;
       background-image:
-        repeating-radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.22) 0 1px, transparent 1px 4px),
-        linear-gradient(125deg, rgba(78, 80, 222, 0.18), rgba(243, 46, 53, 0.12));
+        linear-gradient(90deg, rgba(8, 7, 11, 0.92) 0%, rgba(8, 7, 11, 0.68) 42%, rgba(8, 7, 11, 0.14) 76%, transparent 100%),
+        linear-gradient(180deg, rgba(8, 7, 11, 0.45) 0%, transparent 28%, transparent 72%, rgba(8, 7, 11, 0.85) 100%);
     }
 
     @media (prefers-reduced-motion: no-preference) {
@@ -391,11 +390,16 @@
 
     .hero-manifesto {
       margin: 0 0 1.25rem;
-      max-width: 44ch;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
+      max-width: 48ch;
+      font-family: var(--font-sans);
+      font-size: 0.96rem;
       line-height: 1.65;
-      color: rgba(242, 240, 247, 0.8);
+      color: rgba(242, 240, 247, 0.9);
+    }
+
+    .hero-manifesto strong {
+      color: #ffffff;
+      font-weight: 600;
     }
 
     .install-bar {
@@ -403,21 +407,26 @@
       align-items: center;
       justify-content: space-between;
       gap: 0.75rem;
-      background: rgba(14, 13, 20, 0.88);
+      background: rgba(8, 7, 11, 0.92);
       border: 1px solid var(--border-red);
       border-radius: 4px;
-      padding: 0.6rem 0.75rem 0.6rem 1rem;
-      max-width: 640px;
+      padding: 0.55rem 0.65rem 0.55rem 0.95rem;
+      max-width: 660px;
       margin-block-end: 1.15rem;
       backdrop-filter: blur(8px);
     }
 
     .install-bar code {
       font-family: var(--font-mono);
-      font-size: 0.76rem;
+      font-size: 0.72rem;
       color: var(--text);
       overflow-x: auto;
       white-space: nowrap;
+      scrollbar-width: none;
+    }
+
+    .install-bar code::-webkit-scrollbar {
+      display: none;
     }
 
     .hero-cta-row {
@@ -923,7 +932,7 @@
 
   <header class="site-header">
     <div class="container nav-inner">
-      <a class="brand" href="#top">EMC // NOCTURNE</a>
+      <a class="brand" href="#top">EMC</a>
       <nav class="site-nav" aria-label="Primary navigation">
         <a href="#demo">Output</a>
         <a href="#eval">Benchmarks</a>
@@ -965,9 +974,9 @@
 
         <div class="hero-bottom-grid">
           <div>
-            <p class="hero-sub-display">BEFORE COMMIT /<br>CODE IN MOTION</p>
+            <p class="hero-sub-display">PROVE YOU UNDERSTAND<br>YOUR OWN DIFF</p>
             <p class="hero-manifesto">
-              Local-first Python CLI and git commit gate built for Solana/Anchor Rust &amp; TypeScript wallet diffs. Scrubs secrets locally, surfaces 100% of seeded vulnerabilities, and verifies human comprehension before code ships.
+              <strong>explain-my-own-code (emc)</strong> intercepts your git diff before you commit, pinpoints the lines most likely to hide a bug or drain funds, and quizzes you directly on your real code. It grades your answers, remembers your blind spots in a Leitner mastery ledger, and blocks commits you can't explain — built for AI-assisted Rust/Anchor and TypeScript teams.
             </p>
             <div class="install-bar">
               <code id="install-cmd">pipx install git+https://github.com/tejasmhamane1224/explain-my-own-code.git@v1.0.0</code>
