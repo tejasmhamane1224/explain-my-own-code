@@ -185,8 +185,73 @@
       transition: color 160ms ease;
     }
 
-    nav.site-nav a:hover {
+    nav.site-nav a:hover,
+    nav.site-nav a[aria-current="location"] {
       color: #ffffff;
+    }
+
+    section[id] {
+      scroll-margin-top: 5rem;
+    }
+
+    .skip-link {
+      position: fixed;
+      inset-block-start: 0.75rem;
+      inset-inline-start: 0.75rem;
+      z-index: 100;
+      padding: 0.55rem 0.9rem;
+      background: var(--red);
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-radius: 3px;
+      transform: translateY(-200%);
+      transition: transform 150ms ease;
+    }
+
+    .skip-link:focus-visible {
+      transform: translateY(0);
+    }
+
+    .ux-toast {
+      position: fixed;
+      inset-block-end: 1.25rem;
+      inset-inline-end: 1.25rem;
+      z-index: 90;
+      padding: 0.55rem 0.95rem;
+      background: rgba(8, 7, 11, 0.96);
+      border: 1px solid var(--red);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-radius: 3px;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .ux-toast.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .install-bar code,
+    .panel-cmd {
+      cursor: pointer;
+    }
+
+    .ticker-wrap:hover .ticker-track {
+      animation-play-state: paused;
+    }
+
+    body.tab-hidden .hero-art-img,
+    body.tab-hidden .ticker-track {
+      animation-play-state: paused;
     }
 
     .nav-controls {
@@ -928,7 +993,9 @@
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#top">Skip to main content</a>
   <div id="scroll-progress" aria-hidden="true"></div>
+  <div id="ux-toast" class="ux-toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <header class="site-header">
     <div class="container nav-inner">
@@ -989,27 +1056,27 @@
           </div>
 
           <div class="swatch-stack" aria-label="Core benchmark metrics">
-            <div class="swatch-card swatch-black">
+            <a class="swatch-card swatch-black" href="#eval" title="Jump to benchmark suite (282/282 tests)">
               <span class="swatch-idx">07</span>
               <div>
                 <div class="swatch-val">282/282</div>
                 <div class="swatch-label">Tests Passing</div>
               </div>
-            </div>
-            <div class="swatch-card swatch-red">
+            </a>
+            <a class="swatch-card swatch-red" href="#ablation" title="Jump to ablation study (100.0% bugs surfaced)">
               <span class="swatch-idx">08</span>
               <div>
                 <div class="swatch-val">100.0%</div>
                 <div class="swatch-label">Bugs Surfaced</div>
               </div>
-            </div>
-            <div class="swatch-card swatch-indigo">
+            </a>
+            <a class="swatch-card swatch-indigo" href="#architecture" title="Jump to pipeline architecture (48.1ms offline latency)">
               <span class="swatch-idx">09</span>
               <div>
                 <div class="swatch-val">48.1ms</div>
                 <div class="swatch-label">Offline Latency</div>
               </div>
-            </div>
+            </a>
           </div>
         </div>
       </div>
@@ -1384,18 +1451,69 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
 
   <script>
     (() => {
-      // 1. Copy install command
+      // 0. Subtle accessible status toast (invisible at rest, zero UI footprint)
+      const toastEl = document.getElementById("ux-toast");
+      let toastTimer = 0;
+      function announce(msg) {
+        if (!toastEl) return;
+        toastEl.textContent = msg;
+        toastEl.classList.add("is-visible");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => {
+          toastEl.classList.remove("is-visible");
+        }, 1800);
+      }
+
+      async function copyText(raw) {
+        const text = raw.trim();
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            return ok;
+          } catch {
+            return false;
+          }
+        }
+      }
+
+      // 1. Click-to-copy on install bar (both button & code) AND every CLI command line
       const copyBtn = document.getElementById("copy-btn");
       const installCmd = document.getElementById("install-cmd");
-      if (copyBtn && installCmd) {
-        copyBtn.addEventListener("click", async () => {
-          try {
-            await navigator.clipboard.writeText(installCmd.textContent.trim());
-            copyBtn.textContent = "Copied";
-            window.setTimeout(() => { copyBtn.textContent = "Copy"; }, 1800);
-          } catch {
-            copyBtn.textContent = "Manual Copy";
-          }
+      let copyResetTimer = 0;
+      async function triggerInstallCopy() {
+        if (!installCmd) return;
+        const ok = await copyText(installCmd.textContent || "");
+        if (copyBtn) {
+          copyBtn.textContent = ok ? "Copied" : "Manual Copy";
+          window.clearTimeout(copyResetTimer);
+          copyResetTimer = window.setTimeout(() => { copyBtn.textContent = "Copy"; }, 1800);
+        }
+        announce(ok ? "Copied install command" : "Press Ctrl+C to copy");
+      }
+
+      if (copyBtn) copyBtn.addEventListener("click", triggerInstallCopy);
+      if (installCmd) {
+        installCmd.title = "Click to copy install command (shortcut: C)";
+        installCmd.addEventListener("click", triggerInstallCopy);
+      }
+
+      for (const cmdEl of document.querySelectorAll(".panel-cmd")) {
+        cmdEl.title = "Click to copy runnable command";
+        cmdEl.addEventListener("click", async () => {
+          const clean = (cmdEl.textContent || "").replace(/^\$\s*/, "");
+          const ok = await copyText(clean);
+          announce(ok ? "Copied CLI command" : "Press Ctrl+C to copy");
         });
       }
 
@@ -1412,34 +1530,37 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
         onScroll();
       }
 
-      // 3. Accessible Tabs (selection follows focus + beforematch sync)
+      // 3. Accessible Tabs (selection follows focus + beforematch sync + URL hash deep-linking)
       const tablist = document.querySelector('[role="tablist"]');
-      if (tablist) {
-        const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
-        const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+      const tabs = tablist ? Array.from(tablist.querySelectorAll('[role="tab"]')) : [];
+      const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
 
-        function selectTab(targetTab, focusTab = false) {
-          for (const tab of tabs) {
-            const isSelected = tab === targetTab;
-            tab.setAttribute("aria-selected", String(isSelected));
-            tab.tabIndex = isSelected ? 0 : -1;
-          }
-          for (const panel of panels) {
-            const isMatch = panel.getAttribute("aria-labelledby") === targetTab.id;
-            if (isMatch) {
-              panel.removeAttribute("hidden");
-              panel.tabIndex = 0;
-            } else {
-              panel.setAttribute("hidden", "until-found");
-              panel.removeAttribute("tabindex");
-            }
-          }
-          targetTab.scrollIntoView({ block: "nearest", inline: "nearest" });
-          if (focusTab) targetTab.focus();
-        }
-
+      function selectTab(targetTab, focusTab = false, updateHash = false) {
         for (const tab of tabs) {
-          tab.addEventListener("click", () => selectTab(tab, false));
+          const isSelected = tab === targetTab;
+          tab.setAttribute("aria-selected", String(isSelected));
+          tab.tabIndex = isSelected ? 0 : -1;
+        }
+        for (const panel of panels) {
+          const isMatch = panel.getAttribute("aria-labelledby") === targetTab.id;
+          if (isMatch) {
+            panel.removeAttribute("hidden");
+            panel.tabIndex = 0;
+          } else {
+            panel.setAttribute("hidden", "until-found");
+            panel.removeAttribute("tabindex");
+          }
+        }
+        targetTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (focusTab) targetTab.focus();
+        if (updateHash && window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", `#${targetTab.id}`);
+        }
+      }
+
+      if (tablist) {
+        for (const tab of tabs) {
+          tab.addEventListener("click", () => selectTab(tab, false, true));
           tab.addEventListener("keydown", (event) => {
             const idx = tabs.indexOf(tab);
             let nextIdx = null;
@@ -1449,7 +1570,7 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
             else if (event.key === "End") nextIdx = tabs.length - 1;
             if (nextIdx !== null) {
               event.preventDefault();
-              selectTab(tabs[nextIdx], true);
+              selectTab(tabs[nextIdx], true, true);
             }
           });
         }
@@ -1458,17 +1579,49 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
           panel.addEventListener("beforematch", () => {
             const ownerId = panel.getAttribute("aria-labelledby");
             const ownerTab = tabs.find((t) => t.id === ownerId);
-            if (ownerTab) selectTab(ownerTab, false);
+            if (ownerTab) selectTab(ownerTab, false, false);
           });
         }
+
+        // Restore deep-linked tab from URL hash if present
+        const initialHash = window.location.hash.slice(1);
+        const initialTab = tabs.find((t) => t.id === initialHash);
+        if (initialTab) selectTab(initialTab, false, false);
       }
 
-      // 4. Nocturne Kinetic Motion Controller (smooth parallax + Pause/Play accessibility)
+      // 4. Scroll-Spy Active Navigation (aria-current="location")
+      const navLinks = Array.from(document.querySelectorAll("nav.site-nav a[href^='#']"));
+      const trackedSections = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+
+      if ("IntersectionObserver" in window && trackedSections.length) {
+        const spy = new IntersectionObserver(
+          (entries) => {
+            const visible = entries
+              .filter((e) => e.isIntersecting)
+              .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+            if (!visible) return;
+            const activeId = `#${visible.target.id}`;
+            for (const link of navLinks) {
+              if (link.getAttribute("href") === activeId) {
+                link.setAttribute("aria-current", "location");
+              } else {
+                link.removeAttribute("aria-current");
+              }
+            }
+          },
+          { rootMargin: "-25% 0px -55% 0px", threshold: [0.1, 0.4, 0.7] }
+        );
+        for (const sec of trackedSections) spy.observe(sec);
+      }
+
+      // 5. Nocturne Kinetic Motion Controller (parallax + Pause/Play + battery-saving tab visibility)
       const heroArt = document.getElementById("hero-art-img");
       const motionBtn = document.getElementById("motion-toggle");
       let paused = prefersReduced.matches;
 
-      function syncMotionUI() {
+      function syncMotionUI(showNotice = false) {
         document.body.classList.toggle("motion-paused", paused);
         if (motionBtn) {
           motionBtn.textContent = paused ? "Play Motion" : "Pause Motion";
@@ -1477,17 +1630,23 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
           heroArt.style.setProperty("--px", "0px");
           heroArt.style.setProperty("--py", "0px");
         }
+        if (showNotice) announce(paused ? "Motion paused" : "Motion resumed");
       }
 
       if (motionBtn) {
+        motionBtn.title = "Toggle background motion (shortcut: P)";
         motionBtn.addEventListener("click", () => {
           paused = !paused;
-          syncMotionUI();
+          syncMotionUI(true);
         });
       }
 
+      document.addEventListener("visibilitychange", () => {
+        document.body.classList.toggle("tab-hidden", document.hidden);
+      });
+
       window.addEventListener("pointermove", (event) => {
-        if (paused || !heroArt) return;
+        if (paused || document.hidden || !heroArt) return;
         const nx = (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2;
         const ny = (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2;
         heroArt.style.setProperty("--px", `${(-nx * 16).toFixed(1)}px`);
@@ -1496,10 +1655,33 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
 
       prefersReduced.addEventListener("change", (event) => {
         paused = event.matches;
-        syncMotionUI();
+        syncMotionUI(false);
       });
 
-      syncMotionUI();
+      // 6. Power-user Keyboard Shortcuts (C = copy install, P = pause motion, 1-4 = CLI tabs, T = top)
+      window.addEventListener("keydown", (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        const tag = (event.target && event.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || (event.target && event.target.isContentEditable)) return;
+
+        const key = event.key.toLowerCase();
+        if (key === "c") {
+          triggerInstallCopy();
+        } else if (key === "p") {
+          paused = !paused;
+          syncMotionUI(true);
+        } else if (key >= "1" && key <= "4" && tabs[Number(key) - 1]) {
+          const targetTab = tabs[Number(key) - 1];
+          selectTab(targetTab, false, true);
+          const demoSec = document.getElementById("demo");
+          if (demoSec) demoSec.scrollIntoView({ behavior: prefersReduced.matches ? "auto" : "smooth", block: "start" });
+          announce(`Switched to ${targetTab.textContent.trim()}`);
+        } else if (key === "t") {
+          window.scrollTo({ top: 0, behavior: prefersReduced.matches ? "auto" : "smooth" });
+        }
+      });
+
+      syncMotionUI(false);
     })();
   </script>
 </body>
