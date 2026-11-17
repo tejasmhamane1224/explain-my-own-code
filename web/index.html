@@ -3,18 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark">
-  <title>explain-my-own-code (emc) — Local-First Diff Comprehension Gate</title>
+  <meta name="color-scheme" content="light">
+  <title>explain-my-own-code (emc) — Verify every diff faster and error-free</title>
   <meta name="description" content="Open-source Python CLI and git commit comprehension gate for Solana/Anchor Rust and TypeScript wallet diffs. Local-first secret redaction, 16 static detectors, 4-step quality gate, and reproducible emc eval benchmarks.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://explain-my-own-code.vercel.app/">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="explain-my-own-code (emc) — Local-First Diff Comprehension Gate">
-  <meta property="og:description" content="Stop rubber-stamping AI-generated diffs. Local-first secret redaction, 16 Solana/Anchor &amp; TS detectors, 4-step quality gate, and reproducible emc eval benchmarks.">
+  <meta property="og:title" content="explain-my-own-code (emc) — Verify every diff faster and error-free">
+  <meta property="og:description" content="Local-first secret redaction, 16 Solana/Anchor &amp; TS detectors, 4-step quality gate, and reproducible emc eval benchmarks.">
   <meta property="og:url" content="https://explain-my-own-code.vercel.app/">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="explain-my-own-code (emc) — Local-First Diff Comprehension Gate">
   <meta name="twitter:description" content="Open-source Python CLI and git commit gate for AI-generated diffs by Tejas Mhamane.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -36,26 +39,33 @@
   </script>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0a0c10;
-      --surface: #11151c;
-      --surface-2: #171c26;
-      --border: #242c3a;
-      --border-strong: #344054;
-      --text: #eef2f6;
-      --text-muted: #9aa6b8;
-      --accent: #38bdf8;
-      --accent-soft: rgba(56, 189, 248, 0.14);
-      --ok: #34d399;
-      --ok-soft: rgba(52, 211, 153, 0.14);
-      --warn: #fbbf24;
-      --warn-soft: rgba(251, 191, 36, 0.14);
-      --danger: #f87171;
-      --danger-soft: rgba(248, 113, 113, 0.14);
-      --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
-      --scrollbar-thumb: #39465a;
-      --scrollbar-track: #0e1218;
+      color-scheme: light;
+      --bg: #ffffff;
+      --hero-surface: #f5f5f6;
+      --surface-subtle: #f8f9fa;
+      --surface-tray: #eceeef;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --border-strong: #d1d5db;
+      --text: #16181c;
+      --text-secondary: #525866;
+      --text-muted: #717784;
+      --charcoal: #222427;
+      --charcoal-hover: #111315;
+      --orange: #f04a00;
+      --orange-hover: #d84200;
+      --forest: #12372a;
+      --forest-text: #e6f6ef;
+      --green: #16a34a;
+      --green-soft: #e8f8ee;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --red: #dc2626;
+      --red-soft: #fee2e2;
+      --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+      --scrollbar-thumb: #c4c9d1;
+      --scrollbar-track: #f3f4f6;
       scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     }
 
@@ -94,242 +104,541 @@
       font-family: var(--font-sans);
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
+      line-height: 1.55;
       -webkit-font-smoothing: antialiased;
     }
 
     a {
-      color: var(--accent);
+      color: inherit;
       text-decoration: none;
     }
-    a:hover {
-      text-decoration: underline;
-    }
+
     a:focus-visible, button:focus-visible, [tabindex="0"]:focus-visible {
-      outline: 2px solid var(--accent);
+      outline: 2px solid var(--orange);
       outline-offset: 2px;
     }
 
     .container {
-      max-width: 1120px;
+      max-width: 1180px;
       margin-inline: auto;
       padding-inline: clamp(1rem, 3vw, 2rem);
     }
 
-    /* Navigation */
+    /* Vergo-style Pure White Navbar */
     header.site-header {
       position: sticky;
       inset-block-start: 0;
-      z-index: 20;
-      background: rgba(10, 12, 16, 0.88);
-      backdrop-filter: blur(12px);
-      border-block-end: 1px solid var(--border);
+      z-index: 30;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(10px);
     }
 
     .nav-inner {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      justify-content: space-between;
       gap: 1rem;
-      min-block-size: 4rem;
-      flex-wrap: wrap;
-      padding-block: 0.5rem;
+      min-block-size: 4.5rem;
     }
 
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.65rem;
-      font-family: var(--font-mono);
+    .wordmark {
+      justify-self: start;
+      font-size: 1.38rem;
       font-weight: 700;
-      font-size: 0.95rem;
+      letter-spacing: -0.04em;
       color: var(--text);
-      text-decoration: none;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.45rem;
     }
 
-    .brand-badge {
+    .wordmark-tag {
+      font-family: var(--font-mono);
       font-size: 0.72rem;
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      background: var(--ok-soft);
-      color: var(--ok);
-      border: 1px solid rgba(52, 211, 153, 0.35);
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0;
     }
 
     nav.site-nav {
       display: flex;
       align-items: center;
-      gap: 1.25rem;
-      flex-wrap: wrap;
-      font-size: 0.9rem;
+      gap: 1.75rem;
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-secondary);
     }
 
-    nav.site-nav a {
-      color: var(--text-muted);
-    }
     nav.site-nav a:hover {
       color: var(--text);
-      text-decoration: none;
     }
 
-    /* Hero */
-    .hero {
-      padding-block: clamp(3.5rem, 7vw, 5.5rem) clamp(2.5rem, 5vw, 4rem);
-      border-block-end: 1px solid var(--border);
-      background:
-        radial-gradient(60% 45% at 75% 0%, rgba(56, 189, 248, 0.09), transparent 70%),
-        radial-gradient(50% 40% at 15% 10%, rgba(52, 211, 153, 0.06), transparent 70%);
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      color: var(--accent);
-      background: var(--accent-soft);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      padding: 0.25rem 0.65rem;
-      border-radius: 999px;
-      margin-block-end: 1.25rem;
-    }
-
-    h1 {
-      margin: 0 0 1rem;
-      font-size: clamp(2rem, 4.5vw, 3.25rem);
-      line-height: 1.12;
-      letter-spacing: -0.03em;
-      max-width: 22ch;
-    }
-
-    .hero-lead {
-      margin: 0 0 1.75rem;
-      font-size: clamp(1rem, 1.5vw, 1.15rem);
-      color: var(--text-muted);
-      max-width: 64ch;
-    }
-
-    .install-box {
+    .nav-actions {
+      justify-self: end;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      background: var(--surface);
-      border: 1px solid var(--border-strong);
-      border-radius: 10px;
-      padding: 0.75rem 1rem;
-      max-width: 760px;
-      margin-block-end: 1.25rem;
+      gap: 1.15rem;
+      font-size: 0.88rem;
+      font-weight: 500;
     }
 
-    .install-box code {
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
+    .nav-link-subtle {
+      color: var(--text-secondary);
+    }
+    .nav-link-subtle:hover {
       color: var(--text);
-      overflow-x: auto;
+    }
+
+    .btn-orange {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--orange);
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.62rem 1.25rem;
+      border-radius: 7px;
+      border: 0;
+      cursor: pointer;
+      transition: background-color 140ms ease;
       white-space: nowrap;
     }
+    .btn-orange:hover {
+      background: var(--orange-hover);
+    }
 
-    .btn {
+    .btn-charcoal {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 0.45rem;
+      background: var(--charcoal);
+      color: #ffffff;
       font-family: var(--font-sans);
-      font-size: 0.875rem;
-      font-weight: 600;
-      padding: 0.55rem 1rem;
-      border-radius: 8px;
-      border: 1px solid var(--border-strong);
-      background: var(--surface-2);
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 0.82rem 1.75rem;
+      border-radius: 7px;
+      border: 0;
+      cursor: pointer;
+      transition: background-color 140ms ease;
+      white-space: nowrap;
+    }
+    .btn-charcoal:hover {
+      background: var(--charcoal-hover);
+    }
+
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      background: #ffffff;
       color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 0.86rem;
+      font-weight: 500;
+      padding: 0.6rem 1.05rem;
+      border-radius: 7px;
+      border: 1px solid var(--border-strong);
       cursor: pointer;
       white-space: nowrap;
-      text-decoration: none;
+    }
+    .btn-outline:hover {
+      background: var(--surface-subtle);
     }
 
-    .btn:hover {
-      background: #1f2735;
-      text-decoration: none;
+    @media (max-width: 820px) {
+      .nav-inner {
+        grid-template-columns: auto auto;
+      }
+      nav.site-nav {
+        display: none;
+      }
     }
 
-    .btn-primary {
-      background: var(--accent);
-      color: #04131c;
-      border-color: var(--accent);
+    /* Vergo Framed Soft-Gray Hero Canvas */
+    .hero-section {
+      padding-block: 0.5rem 2.25rem;
     }
 
-    .btn-primary:hover {
-      background: #7dd3fc;
-      border-color: #7dd3fc;
-      color: #04131c;
-    }
-
-    .hero-actions {
+    .hero-frame {
+      position: relative;
+      background: var(--hero-surface);
+      border-radius: 14px;
+      min-block-size: 540px;
+      padding: clamp(3rem, 6vw, 5rem) clamp(1.25rem, 4vw, 3rem) clamp(3rem, 5vw, 4.25rem);
+      overflow: hidden;
       display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      margin-block-end: 2.25rem;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
     }
 
-    /* KPI Strip */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    .hero-copy {
+      position: relative;
+      z-index: 3;
+      max-width: 680px;
+      margin-block: 1.5rem 2.5rem;
+    }
+
+    .hero-copy h1 {
+      margin: 0 0 1.2rem;
+      font-size: clamp(2.25rem, 5vw, 3.8rem);
+      font-weight: 400;
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      color: var(--text);
+    }
+
+    .hero-copy p {
+      margin: 0 auto 2rem;
+      max-width: 48ch;
+      font-size: 0.98rem;
+      line-height: 1.6;
+      color: var(--text-muted);
+    }
+
+    .hero-cta-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 0.85rem;
     }
 
-    .kpi-card {
-      background: var(--surface);
+    .install-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      background: #ffffff;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.1rem;
+      border-radius: 8px;
+      padding: 0.45rem 0.55rem 0.45rem 0.95rem;
+      max-width: 100%;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
     }
 
-    .kpi-value {
+    .install-pill code {
       font-family: var(--font-mono);
-      font-size: 1.55rem;
-      font-weight: 700;
+      font-size: 0.77rem;
+      color: var(--text-secondary);
+      overflow-x: auto;
+      white-space: nowrap;
+      max-width: 58vw;
+    }
+
+    .copy-mini {
+      font-family: var(--font-sans);
+      font-size: 0.74rem;
+      font-weight: 600;
+      background: var(--hero-surface);
       color: var(--text);
-      line-height: 1.2;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.3rem 0.65rem;
+      cursor: pointer;
+    }
+    .copy-mini:hover {
+      background: #e9ebee;
     }
 
-    .kpi-value.ok {
-      color: var(--ok);
+    /* Floating Widget 1: Top-Left Auto-Redacted Card (Vergo Paul Stark / Receipt Auto-Matched) */
+    .float-top-left {
+      position: absolute;
+      inset-block-start: 2.1rem;
+      inset-inline-start: 2.1rem;
+      z-index: 2;
+      text-align: left;
+      width: 224px;
     }
 
-    .kpi-label {
+    .mini-diff-card {
+      background: #eceeef;
+      border: 1px solid #d7dbe0;
+      border-radius: 10px;
+      padding: 0.72rem 0.88rem 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .mini-diff-title {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .mini-diff-title strong {
+      display: block;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+    }
+
+    .mini-diff-score {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .forest-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.38rem;
+      background: var(--forest);
+      color: var(--forest-text);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 0.38rem 0.78rem;
+      border-radius: 6px;
+      margin-block-start: -0.55rem;
+      margin-inline-start: 1.5rem;
+      box-shadow: 0 6px 16px rgba(18, 55, 42, 0.18);
+    }
+
+    /* Floating Widget 2: Bottom-Left Stacked Workflow Tray (Vergo Home Depot / Receipt Captured / Synced to ERP) */
+    .float-bottom-left {
+      position: absolute;
+      inset-block-end: 2rem;
+      inset-inline-start: 3.5rem;
+      z-index: 2;
+      width: 214px;
+      background: var(--surface-tray);
+      border-radius: 12px;
+      padding: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      text-align: left;
+    }
+
+    .tray-step {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 0.62rem 0.78rem;
+      font-size: 0.76rem;
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tray-step.stacked {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.12rem;
+    }
+
+    .tray-step small {
+      color: var(--text-muted);
+      font-size: 0.68rem;
+    }
+
+    .tray-step strong {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      display: inline-grid;
+      place-items: center;
+      flex: none;
+    }
+    .status-dot::after {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--green);
+    }
+
+    /* Floating Widget 3: Bottom-Right Device Verification Frame (Vergo iPhone Receipt Captured) */
+    .float-phone {
+      position: absolute;
+      inset-block-end: -1.6rem;
+      inset-inline-end: 2.5rem;
+      z-index: 2;
+      width: 228px;
+      background: #141619;
+      border-radius: 30px 30px 0 0;
+      padding: 9px 9px 0;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+      text-align: left;
+    }
+
+    .phone-screen {
+      background: #ffffff;
+      border-radius: 22px 22px 0 0;
+      padding: 0.75rem 1rem 2.25rem;
+    }
+
+    .phone-notch {
+      width: 58px;
+      height: 14px;
+      background: #141619;
+      border-radius: 999px;
+      margin: 0 auto 0.85rem;
+    }
+
+    .phone-check {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      display: grid;
+      place-items: center;
+      margin: 0 auto 0.45rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    .phone-label {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    .phone-metric {
+      text-align: center;
+      font-size: 1.38rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-block: 0.1rem 0.9rem;
+    }
+
+    .phone-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      border-block-start: 1px solid var(--border);
+      padding-block-start: 0.7rem;
+      font-size: 0.69rem;
+    }
+
+    .phone-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .phone-row span:first-child {
+      color: var(--text-muted);
+    }
+    .phone-row span:last-child {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    @media (max-width: 1060px) {
+      .hero-frame {
+        min-block-size: auto;
+        padding-block: 3rem 2.5rem;
+      }
+      .float-top-left,
+      .float-bottom-left,
+      .float-phone {
+        position: static;
+        width: 100%;
+        max-width: 340px;
+      }
+      .float-phone {
+        border-radius: 24px;
+        padding: 8px;
+      }
+      .phone-screen {
+        border-radius: 17px;
+        padding-block-end: 1.1rem;
+      }
+      .hero-widgets-mobile {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+        margin-block-start: 2rem;
+        width: 100%;
+      }
+    }
+
+    /* Trust Bar Below Hero (Vergo "World-class construction teams trust Vergo") */
+    .trust-strip {
+      text-align: center;
+      padding-block: 1.5rem 2.75rem;
+      border-block-end: 1px solid var(--border);
+    }
+
+    .trust-title {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .trust-pills {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.65rem 1.4rem;
+      font-family: var(--font-mono);
       font-size: 0.8rem;
       color: var(--text-muted);
-      margin-block-start: 0.25rem;
     }
 
-    /* Sections */
+    .trust-pills span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    /* Content Sections */
     section.block {
-      padding-block: clamp(2.5rem, 5vw, 4rem);
+      padding-block: clamp(3rem, 5vw, 4.5rem);
       border-block-end: 1px solid var(--border);
     }
 
     .section-header {
-      margin-block-end: 1.75rem;
+      margin-block-end: 2rem;
+      max-width: 68ch;
+    }
+
+    .section-kicker {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--orange);
+      margin-block-end: 0.45rem;
     }
 
     .section-header h2 {
-      margin: 0 0 0.45rem;
-      font-size: clamp(1.4rem, 2.5vw, 1.9rem);
-      letter-spacing: -0.02em;
+      margin: 0 0 0.5rem;
+      font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+      font-weight: 500;
+      letter-spacing: -0.025em;
     }
 
     .section-header p {
       margin: 0;
-      color: var(--text-muted);
-      max-width: 68ch;
+      color: var(--text-secondary);
+      font-size: 0.96rem;
     }
 
-    /* Tabs (Modern Web Guidance compliant) */
+    /* Accessible Tabs (Modern Web Guidance compliant) */
     .tabs-shell {
-      background: var(--surface);
+      background: var(--hero-surface);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
@@ -339,8 +648,8 @@
       display: flex;
       overflow-x: auto;
       scroll-snap-type: inline proximity;
+      background: #ffffff;
       border-block-end: 1px solid var(--border);
-      background: var(--surface-2);
     }
 
     .tablist [role="tab"] {
@@ -350,10 +659,11 @@
       appearance: none;
       background: transparent;
       border: 0;
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-family: var(--font-mono);
-      font-size: 0.82rem;
-      padding: 0.9rem 1.15rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.95rem 1.2rem;
       cursor: pointer;
     }
 
@@ -362,14 +672,14 @@
     }
 
     .tablist [role="tab"][aria-selected="true"] {
-      color: var(--accent);
+      color: var(--text);
     }
 
     .tablist [role="tab"][aria-selected="true"]::after {
       content: "";
       position: absolute;
       inset: auto 0 0;
-      border-block-end: 3px solid var(--accent);
+      border-block-end: 3px solid var(--orange);
     }
 
     .tab-panels {
@@ -386,65 +696,67 @@
 
     .panel-cmd {
       font-family: var(--font-mono);
-      font-size: 0.82rem;
-      color: var(--accent);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
       margin: 0 0 0.75rem;
       word-break: break-all;
     }
 
     pre.terminal {
+      color-scheme: dark;
       margin: 0;
-      padding: 1rem 1.15rem;
-      background: #07090d;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      padding: 1.1rem 1.2rem;
+      background: #16181c;
+      color: #e6edf5;
+      border-radius: 9px;
       font-family: var(--font-mono);
-      font-size: 0.8rem;
-      line-height: 1.55;
-      color: #d7e2f0;
+      font-size: 0.79rem;
+      line-height: 1.58;
       overflow-x: auto;
     }
 
-    .t-ok { color: var(--ok); }
-    .t-warn { color: var(--warn); }
-    .t-err { color: var(--danger); }
-    .t-dim { color: #6c7a8f; }
+    .t-ok { color: #4ade80; }
+    .t-warn { color: #fbbf24; }
+    .t-err { color: #f87171; }
+    .t-dim { color: #8c96a6; }
 
     /* Pipeline Grid */
     .pipeline-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 1rem;
     }
 
-    .card {
-      background: var(--surface);
+    .step-card {
+      background: var(--hero-surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.15rem 1.25rem;
-    }
-
-    .card h3 {
-      margin: 0 0 0.45rem;
-      font-size: 0.98rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      border-radius: 12px;
+      padding: 1.35rem 1.4rem;
     }
 
     .step-num {
+      display: inline-block;
       font-family: var(--font-mono);
-      font-size: 0.74rem;
-      padding: 0.1rem 0.4rem;
-      border-radius: 4px;
-      background: var(--accent-soft);
-      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--forest);
+      background: var(--green-soft);
+      padding: 0.16rem 0.5rem;
+      border-radius: 5px;
+      margin-block-end: 0.65rem;
     }
 
-    .card p {
+    .step-card h3 {
+      margin: 0 0 0.45rem;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .step-card p {
       margin: 0;
       font-size: 0.88rem;
-      color: var(--text-muted);
+      color: var(--text-secondary);
     }
 
     /* Responsive Tables (Modern Web Guidance compliant) */
@@ -452,9 +764,9 @@
       overflow: auto;
       max-inline-size: 100%;
       container-type: inline-size;
-      background: var(--surface);
+      background: #ffffff;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
     }
 
     table {
@@ -467,11 +779,12 @@
 
     caption {
       text-align: left;
-      padding: 0.95rem 1.15rem;
+      padding: 1rem 1.2rem;
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 0.94rem;
       border-block-end: 1px solid var(--border);
-      background: var(--surface-2);
+      background: var(--hero-surface);
+      color: var(--text);
     }
 
     thead {
@@ -481,16 +794,16 @@
     }
 
     th, td {
-      padding: 0.75rem 1.1rem;
+      padding: 0.8rem 1.15rem;
       border-block-end: 1px solid var(--border);
       vertical-align: top;
     }
 
     thead th {
-      background: var(--surface-2);
+      background: var(--surface-subtle);
       color: var(--text-muted);
       font-family: var(--font-mono);
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -498,7 +811,7 @@
     tbody th {
       position: sticky;
       inset-inline-start: 0;
-      background: var(--surface);
+      background: #ffffff;
       font-weight: 600;
       color: var(--text);
     }
@@ -508,33 +821,28 @@
       border-block-end: 0;
     }
 
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.83rem;
+    }
+
     .pill {
       display: inline-block;
       font-family: var(--font-mono);
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       font-weight: 600;
-      padding: 0.15rem 0.5rem;
+      padding: 0.18rem 0.55rem;
       border-radius: 999px;
     }
 
     .pill-ok {
-      background: var(--ok-soft);
-      color: var(--ok);
-    }
-
-    .pill-warn {
-      background: var(--warn-soft);
-      color: var(--warn);
+      background: var(--green-soft);
+      color: var(--forest);
     }
 
     .pill-danger {
-      background: var(--danger-soft);
-      color: var(--danger);
-    }
-
-    .mono {
-      font-family: var(--font-mono);
-      font-size: 0.84rem;
+      background: var(--red-soft);
+      color: var(--red);
     }
 
     @container (width < 600px) {
@@ -554,36 +862,36 @@
         position: sticky;
         inset-block-start: 0;
         z-index: 2;
-        background: var(--surface-2);
+        background: var(--hero-surface);
         border-block-end: 1px solid var(--border);
       }
       td::before {
         content: attr(data-label) ": ";
         font-family: var(--font-mono);
-        font-size: 0.76rem;
+        font-size: 0.75rem;
         color: var(--text-muted);
         font-weight: 600;
       }
     }
 
-    /* Callout for honest failures */
     .honesty-callout {
       margin-block-start: 1.25rem;
       padding: 1rem 1.2rem;
       border-radius: 10px;
-      background: var(--warn-soft);
-      border: 1px solid rgba(251, 191, 36, 0.35);
-      font-size: 0.88rem;
+      background: var(--amber-soft);
+      border: 1px solid #f5d08a;
+      font-size: 0.87rem;
+      color: #5c3a04;
     }
 
     .honesty-callout strong {
-      color: var(--warn);
+      color: var(--amber);
     }
 
     footer {
-      padding-block: 2.25rem;
+      padding-block: 2.5rem;
+      font-size: 0.84rem;
       color: var(--text-muted);
-      font-size: 0.85rem;
     }
 
     .footer-inner {
@@ -593,14 +901,25 @@
       gap: 1rem;
       flex-wrap: wrap;
     }
+
+    .footer-links {
+      display: flex;
+      gap: 1.15rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a:hover {
+      color: var(--text);
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
   <header class="site-header">
     <div class="container nav-inner">
-      <a class="brand" href="#top">
-        <span>explain-my-own-code</span>
-        <span class="brand-badge">emc v1.0.0</span>
+      <a class="wordmark" href="#top">
+        <span>emc</span>
+        <span class="wordmark-tag">v1.0.0</span>
       </a>
       <nav class="site-nav" aria-label="Primary navigation">
         <a href="#demo">CLI Output</a>
@@ -608,65 +927,100 @@
         <a href="#ablation">Ablation</a>
         <a href="#architecture">Pipeline</a>
         <a href="#compare">Compare</a>
-        <a href="https://github.com/tejasmhamane1224/explain-my-own-code" target="_blank" rel="noopener noreferrer">GitHub</a>
       </nav>
+      <div class="nav-actions">
+        <a class="nav-link-subtle" href="https://github.com/tejasmhamane1224/explain-my-own-code" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a class="btn-orange" href="https://github.com/tejasmhamane1224/explain-my-own-code/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer">Get Started</a>
+      </div>
     </div>
   </header>
 
   <main id="top">
-    <section class="hero">
+    <section class="hero-section">
       <div class="container">
-        <div class="eyebrow">Local-First Python CLI &bull; Zero Telemetry &bull; MIT Licensed</div>
-        <h1>Stop rubber-stamping AI-generated diffs.</h1>
-        <p class="hero-lead">
-          <strong><code>emc</code></strong> reads a git diff, redacts secrets locally before any network call, runs 16 deterministic Solana/Anchor &amp; TypeScript wallet risk detectors, enforces a 4-step grounded question quality gate, and tracks concept mastery across a 5-box Leitner ledger.
-        </p>
+        <div class="hero-frame">
+          <!-- Top-left floating card matching Vergo layout -->
+          <div class="float-top-left" aria-hidden="true">
+            <div class="mini-diff-card">
+              <div class="mini-diff-title">
+                programs/vault/lib.rs
+                <strong>missing_signer</strong>
+              </div>
+              <div class="mini-diff-score">Risk 18.18</div>
+            </div>
+            <div class="forest-pill">&#10022; 17/17 Secrets Auto-Redacted</div>
+          </div>
 
-        <div class="install-box">
-          <code id="install-cmd">pipx install git+https://github.com/tejasmhamane1224/explain-my-own-code.git@v1.0.0</code>
-          <button type="button" class="btn" id="copy-btn" aria-label="Copy install command">Copy</button>
-        </div>
+          <!-- Center Editorial Hero Copy -->
+          <div class="hero-copy">
+            <h1>Verify code diffs<br>faster and error-free.</h1>
+            <p>
+              Built for Solana/Anchor Rust and TypeScript wallet teams to verify comprehension of AI-generated diffs before commit. Redact secrets locally, surface subtle vulnerabilities, and run reproducible <code>emc eval</code> checks.
+            </p>
+            <div class="hero-cta-stack">
+              <a class="btn-charcoal" href="#demo">Get Started</a>
+              <div class="install-pill">
+                <code id="install-cmd">pipx install git+https://github.com/tejasmhamane1224/explain-my-own-code.git@v1.0.0</code>
+                <button type="button" class="copy-mini" id="copy-btn" aria-label="Copy install command">Copy</button>
+              </div>
+            </div>
+          </div>
 
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/tejasmhamane1224/explain-my-own-code/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer">Download v1.0.0 Wheel</a>
-          <a class="btn" href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/docs/EVAL.md" target="_blank" rel="noopener noreferrer">Read docs/EVAL.md</a>
-          <a class="btn" href="https://github.com/tejasmhamane1224/explain-my-own-code/actions" target="_blank" rel="noopener noreferrer">CI Matrix (8/8 Passing)</a>
-        </div>
+          <!-- Bottom-left stacked workflow card matching Vergo tray -->
+          <div class="float-bottom-left" aria-hidden="true">
+            <div class="tray-step stacked">
+              <small>Anchor Rule · L10-L15</small>
+              <strong>anchor.signer_check</strong>
+            </div>
+            <div class="tray-step">
+              <span>&#9745;</span>
+              <span>4-Step Quality Gate Passed</span>
+            </div>
+            <div class="tray-step">
+              <span class="status-dot"></span>
+              <span>Synced to .emc/ledger.jsonl</span>
+            </div>
+          </div>
 
-        <div class="kpi-grid" aria-label="Reproducible benchmark metrics from emc eval">
-          <div class="kpi-card">
-            <div class="kpi-value ok">282 / 282</div>
-            <div class="kpi-label">Automated Tests Passing (Linux, macOS, Win)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-value ok">100.0%</div>
-            <div class="kpi-label">Seeded-Bug Surfacing (31/31 Anchor + TS)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-value ok">100.0%</div>
-            <div class="kpi-label">Secret Redaction Recall (17/17 Fixtures)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-value ok">100.0%</div>
-            <div class="kpi-label">Injection Resistance (5/5 Attack Diffs)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-value">96.7%</div>
-            <div class="kpi-label">Rubric Grader Agreement (29/30 Hand-Labeled)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-value">48.1 ms</div>
-            <div class="kpi-label">Total Offline Pipeline Latency</div>
+          <!-- Bottom-right framed verification card matching Vergo mobile capture frame -->
+          <div class="float-phone" aria-hidden="true">
+            <div class="phone-screen">
+              <div class="phone-notch"></div>
+              <div class="phone-check">&#10003;</div>
+              <div class="phone-label">Benchmark Verified</div>
+              <div class="phone-metric">100.0%</div>
+              <div class="phone-rows">
+                <div class="phone-row"><span>Seeded Bugs</span><span>31 / 31</span></div>
+                <div class="phone-row"><span>Secrets Leaked</span><span>0</span></div>
+                <div class="phone-row"><span>Injections Blocked</span><span>5 / 5</span></div>
+                <div class="phone-row"><span>Grader Match</span><span>96.7%</span></div>
+                <div class="phone-row"><span>Offline Latency</span><span>48.1 ms</span></div>
+                <div class="phone-row"><span>Session Cost</span><span>$0.0066</span></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
+    <div class="trust-strip">
+      <div class="container">
+        <p class="trust-title">Local-first, zero telemetry, and verified across every platform</p>
+        <div class="trust-pills">
+          <span>&#10003; 282 / 282 pytest passing</span>
+          <span>&#10003; Ubuntu · macOS · Windows CI</span>
+          <span>&#10003; Python 3.12+ · strict mypy</span>
+          <span>&#10003; MIT License</span>
+        </div>
+      </div>
+    </div>
+
     <section class="block" id="demo">
       <div class="container">
         <div class="section-header">
-          <h2>Real Verbatim CLI Outputs</h2>
-          <p>Every snippet below is unedited stdout from running <code>emc</code> against the repository's own test fixtures.</p>
+          <div class="section-kicker">Verbatim Terminal Evidence</div>
+          <h2>Inspect real outputs before anything hits a network</h2>
+          <p>Unedited stdout captured directly from running <code>emc</code> against the repository's own test fixtures.</p>
         </div>
 
         <div class="tabs-shell">
@@ -769,19 +1123,20 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
     <section class="block" id="eval">
       <div class="container">
         <div class="section-header">
-          <h2>Reproducible Benchmark Metrics (<code>emc eval</code>)</h2>
-          <p>Every number is generated directly by running <code>python -m emc.cli eval --ablation --output docs/EVAL.md</code>. No fabricated numbers; known failures are reported openly.</p>
+          <div class="section-kicker">Measured, Never Fabricated</div>
+          <h2>Reproducible benchmark results from <code>docs/EVAL.md</code></h2>
+          <p>Every metric below is generated by running <code>python -m emc.cli eval --ablation --output docs/EVAL.md</code>, including failures.</p>
         </div>
 
         <div tabindex="0" role="region" aria-labelledby="eval-table-caption" class="table-wrapper">
           <table>
-            <caption id="eval-table-caption">Measured Pipeline Performance &amp; Latency Breakdown</caption>
+            <caption id="eval-table-caption">Headline Evaluation Metrics &amp; Offline Latency Breakdown</caption>
             <thead>
               <tr>
-                <th scope="col">Pipeline Stage / Metric</th>
+                <th scope="col">Pipeline Metric</th>
                 <th scope="col">Measured Result</th>
                 <th scope="col">Target</th>
-                <th scope="col">Verdict</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -789,51 +1144,51 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
                 <th scope="row">Seeded-Bug Surfacing Rate</th>
                 <td class="mono" data-label="Measured Result">100.0% (31/31)</td>
                 <td class="mono" data-label="Target">&ge; 90.0%</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Grounded-Question Rate</th>
                 <td class="mono" data-label="Measured Result">100.0%</td>
                 <td class="mono" data-label="Target">100.0%</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Secret Redaction Recall</th>
                 <td class="mono" data-label="Measured Result">100.0% (17/17)</td>
                 <td class="mono" data-label="Target">100.0%</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Injection-Resistance Rate</th>
                 <td class="mono" data-label="Measured Result">100.0% (5/5)</td>
                 <td class="mono" data-label="Target">100.0%</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Grader Agreement (30 Hand-Labeled)</th>
                 <td class="mono" data-label="Measured Result">96.7% (TP:14 TN:15 FP:1 FN:0)</td>
                 <td class="mono" data-label="Target">&ge; 90.0%</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Average Cost per Session</th>
                 <td class="mono" data-label="Measured Result">$0.0066 USD</td>
                 <td class="mono" data-label="Target">&lt; $0.05</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
               <tr>
                 <th scope="row">Total Offline Pipeline Latency</th>
                 <td class="mono" data-label="Measured Result">48.15 ms (Ingest 13.5 / Redact 7.2 / Detect 13.7 / Gate 9.4 / Grade 4.1)</td>
                 <td class="mono" data-label="Target">&lt; 500 ms</td>
-                <td data-label="Verdict"><span class="pill pill-ok">PASS</span></td>
+                <td data-label="Status"><span class="pill pill-ok">PASS</span></td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <div class="honesty-callout">
-          <strong>Honest Failure Disclosure (from <code>docs/EVAL.md</code>):</strong>
-          1 false positive occurred in offline keyword fallback grading on <code>ft_26_anchor_close_fail</code> (predicted <code>True</code>, ground truth <code>False</code>: response mentioned account keywords while omitting the revival attack risk). Offline keyword fallback trades semantic nuance for zero-cost offline execution; live LLM rubric judging evaluates full attack reasoning.
+          <strong>Honest Failure Disclosure (<code>docs/EVAL.md</code>):</strong>
+          1 false positive occurred in offline keyword fallback grading on <code>ft_26_anchor_close_fail</code> (predicted <code>True</code>, ground truth <code>False</code>: response referenced account terms while omitting the revival attack risk). Live LLM rubric judging evaluates full attack reasoning.
         </div>
       </div>
     </section>
@@ -841,16 +1196,17 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
     <section class="block" id="ablation">
       <div class="container">
         <div class="section-header">
-          <h2>Ablation Study: Full Pipeline vs. Naive One-Prompt Baseline</h2>
-          <p>Why deterministic detectors, local redaction, and the 4-step quality gate matter compared to asking an LLM: <em>"Read this diff and make 3 quiz questions."</em></p>
+          <div class="section-kicker">Ablation Study</div>
+          <h2>Full pipeline vs. naive one-prompt quiz baseline</h2>
+          <p>Measured on the exact same 31 seeded bugs, 17 secret fixtures, and 5 prompt injection attacks.</p>
         </div>
 
         <div tabindex="0" role="region" aria-labelledby="ablation-table-caption" class="table-wrapper">
           <table>
-            <caption id="ablation-table-caption">Empirical Ablation on 31 Seeded Bugs, 17 Secrets, and 5 Prompt Injections</caption>
+            <caption id="ablation-table-caption">Empirical Ablation Comparison</caption>
             <thead>
               <tr>
-                <th scope="col">Evaluation Metric</th>
+                <th scope="col">Metric</th>
                 <th scope="col">Naive One-Prompt</th>
                 <th scope="col">EMC Full Pipeline</th>
                 <th scope="col">Delta</th>
@@ -902,34 +1258,41 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
     <section class="block" id="architecture">
       <div class="container">
         <div class="section-header">
-          <h2>Hybrid Security-First Pipeline</h2>
-          <p><code>emc</code> never executes analyzed code, never sends unredacted diffs, and never hangs in CI or non-TTY shells.</p>
+          <div class="section-kicker">Architecture</div>
+          <h2>Six deterministic guardrails before every commit</h2>
+          <p><code>emc</code> never executes analyzed code, never leaks raw keys, and exits cleanly in CI or non-TTY shells.</p>
         </div>
 
         <div class="pipeline-grid">
-          <div class="card">
-            <h3><span class="step-num">01</span> Ingest &amp; Encapsulate</h3>
+          <div class="step-card">
+            <div class="step-num">01 · INGEST</div>
+            <h3>Diff Splitting &amp; Quarantine</h3>
             <p>Parses staged diffs, commit ranges, and stdin into exact 1-indexed hunks with <code>.emcignore</code> filtering, size caps, and untrusted boundary delimiters.</p>
           </div>
-          <div class="card">
-            <h3><span class="step-num">02</span> Local Secret Redaction</h3>
-            <p>Scrubs Solana 64-byte keypair arrays, Base58 private keys, EVM 0x hex keys, BIP-39 12/24-word seeds, API tokens, and <code>.env</code> secrets locally.</p>
+          <div class="step-card">
+            <div class="step-num">02 · REDACT</div>
+            <h3>Local Secret Scrubbing</h3>
+            <p>Masks Solana 64-byte keypair arrays, Base58 private keys, EVM hex keys, BIP-39 12/24-word seeds, API tokens, and <code>.env</code> secrets locally.</p>
           </div>
-          <div class="card">
-            <h3><span class="step-num">03</span> 16 Static Detectors</h3>
+          <div class="step-card">
+            <div class="step-num">03 · DETECT</div>
+            <h3>16 Static Risk Detectors</h3>
             <p>8 Anchor Rust rules (missing Signer, UncheckedAccount, unchecked math, PDA bump, invoke_signed, realloc/close, remaining_accounts, unverified CPI), 4 TS wallet rules, and 4 generic smells.</p>
           </div>
-          <div class="card">
-            <h3><span class="step-num">04</span> 4-Step Quality Gate</h3>
-            <p>Every candidate question passes verbatim diff grounding, no-answer-leak verification, independent solvability, ambiguity rejection, and injection defense (1 retry, else dropped).</p>
+          <div class="step-card">
+            <div class="step-num">04 · VALIDATE</div>
+            <h3>4-Step Quality Gate</h3>
+            <p>Enforces verbatim diff grounding, no-answer-leak verification, independent solvability, ambiguity rejection, and injection defense (1 retry, else dropped).</p>
           </div>
-          <div class="card">
-            <h3><span class="step-num">05</span> Session &amp; Hybrid Grading</h3>
+          <div class="step-card">
+            <div class="step-num">05 · GRADE</div>
+            <h3>Interactive Quiz &amp; Rubric</h3>
             <p>Rich terminal quiz supporting 5 question types (<code>predict-output</code>, <code>what-breaks-if</code>, <code>consequence</code>, <code>spot-the-bug</code>, <code>explain-back</code>) with a -25% hint ladder.</p>
           </div>
-          <div class="card">
-            <h3><span class="step-num">06</span> Leitner Ledger &amp; Gate</h3>
-            <p>Updates 5-box mastery in <code>.emc/ledger.jsonl</code> with cross-process OS locking, enforces <code>off | warn | gate</code> commit hooks, and appends <code>Comprehension: X/Y</code> trailers.</p>
+          <div class="step-card">
+            <div class="step-num">06 · GATE</div>
+            <h3>Leitner Ledger &amp; Git Hooks</h3>
+            <p>Updates 5-box mastery in <code>.emc/ledger.jsonl</code> with cross-process OS locking, enforces <code>off | warn | gate</code> modes, and writes <code>Comprehension: X/Y</code> trailers.</p>
           </div>
         </div>
       </div>
@@ -938,8 +1301,9 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
     <section class="block" id="compare">
       <div class="container">
         <div class="section-header">
-          <h2>Honest Comparison</h2>
-          <p>How <code>emc</code> differentiates from existing diff-quizzing tools and generic prompt skills.</p>
+          <div class="section-kicker">Honest Differentiation</div>
+          <h2>How <code>emc</code> compares to existing diff quiz tools</h2>
+          <p>Built specifically where one misunderstood line loses funds.</p>
         </div>
 
         <div tabindex="0" role="region" aria-labelledby="compare-table-caption" class="table-wrapper">
@@ -961,7 +1325,7 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
                 <td data-label="emc"><strong>16 deterministic risk rules + hunk ranking</strong></td>
               </tr>
               <tr>
-                <th scope="row">Question Validation Gate</th>
+                <th scope="row">Question Quality Gate</th>
                 <td data-label="arivcode / cognit / bel-ai-jar">None / basic JSON parse</td>
                 <td data-label="Generic Claude Quiz Skills">None (hallucination risk)</td>
                 <td data-label="emc"><strong>4-step gate: grounding, leak, solver, ambiguity</strong></td>
@@ -993,12 +1357,13 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
 
   <footer>
     <div class="container footer-inner">
-      <div>MIT License &bull; Built by <a href="https://github.com/tejasmhamane1224" target="_blank" rel="noopener noreferrer">Tejas Mhamane</a> &bull; Zero telemetry, zero cloud backend.</div>
-      <div>
-        <a href="https://github.com/tejasmhamane1224/explain-my-own-code" target="_blank" rel="noopener noreferrer">Source</a> &middot;
-        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noopener noreferrer">Threat Model</a> &middot;
-        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Security</a> &middot;
-        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+      <div>MIT License &bull; Built by <a href="https://github.com/tejasmhamane1224" target="_blank" rel="noopener noreferrer">Tejas Mhamane</a> &bull; Local-first, zero telemetry.</div>
+      <div class="footer-links">
+        <a href="https://github.com/tejasmhamane1224/explain-my-own-code" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer">v1.0.0 Release</a>
+        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/docs/EVAL.md" target="_blank" rel="noopener noreferrer">EVAL.md</a>
+        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noopener noreferrer">Threat Model</a>
+        <a href="https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Security</a>
       </div>
     </div>
   </footer>
@@ -1015,7 +1380,7 @@ Total Pipeline Latency      : <span class="t-ok">48.1 ms</span>         [SUB-SEC
             copyBtn.textContent = "Copied";
             window.setTimeout(() => { copyBtn.textContent = "Copy"; }, 1800);
           } catch {
-            copyBtn.textContent = "Select & Copy";
+            copyBtn.textContent = "Copy manually";
           }
         });
       }
