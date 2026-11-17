@@ -1,14 +1,16 @@
 # explain-my-own-code (`emc`)
 
-[![Tests](https://img.shields.io/badge/tests-281%20passing-brightgreen)](https://github.com/tejasmhamane1224/explain-my-own-code)
-[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://python.org)
+[![Tests](https://img.shields.io/badge/tests-282%20passing-brightgreen)](https://github.com/tejasmhamane1224/explain-my-own-code/actions)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://python.org)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked: Mypy](https://img.shields.io/badge/type%20checked-mypy-informational)](http://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Local First](https://img.shields.io/badge/architecture-local--first%20%26%20zero--telemetry-orange)](docs/THREAT_MODEL.md)
+[![Live Docs & Eval](https://img.shields.io/badge/docs-explain--my--own--code.vercel.app-38bdf8)](https://explain-my-own-code.vercel.app)
 
 > **Stop rubber-stamping AI-generated diffs.**  
 > `emc` is a local-first developer safety CLI and git commit gate that forces engineers to prove comprehension of critical code changes before code reaches production.
+>
+> **Live Docs & Reproducible Benchmarks:** https://explain-my-own-code.vercel.app | **Release v1.0.0:** https://github.com/tejasmhamane1224/explain-my-own-code/releases/tag/v1.0.0
 
 ---
 

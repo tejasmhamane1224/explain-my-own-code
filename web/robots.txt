@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://explain-my-own-code.vercel.app/sitemap.xml
