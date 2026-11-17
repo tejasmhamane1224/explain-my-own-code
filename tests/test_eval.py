@@ -174,11 +174,70 @@ def test_eval_runner_full_benchmark() -> None:
     # Verify ablation comparison
     assert report.ablation is not None
     ab = report.ablation
+    assert ab.pipeline_grounded_question_rate == report.grounded_question_rate
     assert ab.pipeline_seeded_bug_surfacing_rate > ab.baseline_seeded_bug_surfacing_rate
     assert ab.pipeline_redaction_recall > ab.baseline_redaction_recall
     assert ab.pipeline_injection_resistance_rate > ab.baseline_injection_resistance_rate
     assert ab.baseline_secrets_leaked > 0
     assert ab.pipeline_secrets_leaked == 0
+
+
+def test_mutation_generator_edge_cases_and_clean_diff() -> None:
+    """Verify MutationGenerator handles custom names and produces clean single-spaced diffs."""
+    generator = MutationGenerator()
+
+    # 1. Math checked arithmetic on custom variables (not named balance)
+    arith_code = (
+        "pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {\n"
+        "    let new_shares = "
+        "ctx.accounts.vault.shares.checked_add(amount).ok_or(ErrorCode::Over)?;\n"
+        "    ctx.accounts.vault.shares = new_shares;\n"
+        "    Ok(())\n"
+        "}\n"
+    )
+    res_arith = generator.mutate(arith_code, "math.unchecked_arith")
+    assert "shares + amount" in res_arith.mutated_code
+    assert len(res_arith.diff) > 0
+    assert "\n\n" not in res_arith.diff
+    assert res_arith.diff.count("@@") >= 1
+
+    # Ingest mutant diff and verify detector catches it
+    ing_arith = ingest_diff(stdin_content=res_arith.diff)
+    rep_arith = run_detector_pipeline(ing_arith)
+    assert "math.unchecked_arith" in [f.rule_id for f in rep_arith.findings]
+
+    # 2. Anchor Signer with custom variable name
+    signer_code = (
+        "#[derive(Accounts)]\n"
+        "pub struct UpdateTreasury<'info> {\n"
+        "    pub custom_admin: Signer<'info>,\n"
+        "}\n"
+    )
+    res_signer = generator.mutate(signer_code, "anchor.missing_signer")
+    assert "pub custom_admin: AccountInfo<'info>" in res_signer.mutated_code
+    assert "\n\n" not in res_signer.diff
+    ing_signer = ingest_diff(stdin_content=res_signer.diff)
+    rep_signer = run_detector_pipeline(ing_signer)
+    assert "anchor.missing_signer" in [f.rule_id for f in rep_signer.findings]
+
+    # 3. Mutating an existing benign unified diff in place
+    fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "detectors"
+    benign_diff_path = fixtures_dir / "anchor_missing_signer_negative.diff"
+    if benign_diff_path.exists():
+        benign_diff = benign_diff_path.read_text(encoding="utf-8")
+        res_diff_mut = generator.mutate(benign_diff, "anchor.missing_signer")
+        assert "AccountInfo<'info>" in res_diff_mut.diff
+        assert "-+ pub authority" not in res_diff_mut.diff
+        assert "\n\n" not in res_diff_mut.diff
+        ing_diff_mut = ingest_diff(stdin_content=res_diff_mut.diff)
+        rep_diff_mut = run_detector_pipeline(ing_diff_mut)
+        assert "anchor.missing_signer" in [f.rule_id for f in rep_diff_mut.findings]
+
+    # 4. TS lamport units with custom sol variable
+    ts_code = "export const toLamports = (solVal: number) => solVal * LAMPORTS_PER_SOL;\n"
+    res_ts = generator.mutate(ts_code, "ts.lamport_units", file_path="src/units.ts")
+    assert "solVal;" in res_ts.mutated_code or "solVal" in res_ts.mutated_code
+    assert "\n\n" not in res_ts.diff
 
 
 def test_cli_eval_command_text_and_output(cli_runner: CliRunner, tmp_path: Path) -> None:

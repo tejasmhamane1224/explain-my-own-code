@@ -25,8 +25,8 @@ class MutationResult(BaseModel):
 
 def create_git_diff(file_path: str, original: str, mutated: str) -> str:
     """Generate a standard git unified diff between original and mutated code."""
-    orig_lines = original.splitlines(keepends=True)
-    mut_lines = mutated.splitlines(keepends=True)
+    orig_lines = original.splitlines(keepends=False)
+    mut_lines = mutated.splitlines(keepends=False)
 
     norm_path = file_path.replace("\\", "/").lstrip("/")
     diff_lines = list(
@@ -54,16 +54,9 @@ def mutate_anchor_missing_signer(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Mutate Signer<'info> to AccountInfo<'info> in Anchor account struct."""
-    pattern = r"pub\s+(authority|admin|owner|payer|user)\s*:\s*Signer<'info>"
+    pattern = r"pub\s+(\w+)\s*:\s*Signer<'info>"
     match = re.search(pattern, code)
-    if not match:
-        # Fallback to replacing #[account(signer)]
-        if "#[account(signer)]" in code:
-            mutated = code.replace("#[account(signer)]\n", "")
-            field_name = "authority"
-        else:
-            raise ValueError(f"Could not find Signer<'info> or #[account(signer)] in code:\n{code}")
-    else:
+    if match:
         field_name = match.group(1)
         mutated = re.sub(
             pattern,
@@ -71,12 +64,32 @@ def mutate_anchor_missing_signer(
             code,
             count=1,
         )
+    elif re.search(r"#\[account\([^)]*signer[^)]*\)\]", code):
+        field_name = "authority"
+        mutated = re.sub(
+            r"#\[account\(\s*signer\s*\)\]\r?\n?",
+            "",
+            code,
+            count=1,
+        )
+        if mutated == code:
+            mutated = re.sub(
+                r",?\s*signer\s*,?",
+                "",
+                code,
+                count=1,
+            )
+    else:
+        raise ValueError(f"Could not find Signer<'info> or #[account(signer)] in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to apply mutate_anchor_missing_signer to code:\n{code}")
 
     # Calculate line number where mutation occurred
     lines = code.splitlines()
     line_no = 1
     for idx, line in enumerate(lines, start=1):
-        if field_name in line:
+        if field_name in line or "signer" in line.lower():
             line_no = idx
             break
 
@@ -98,11 +111,14 @@ def mutate_anchor_unchecked_account(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Remove /// CHECK: safety doc comment above UncheckedAccount."""
-    pattern = r"///\s*CHECK:[^\n]*\n"
+    pattern = r"///\s*CHECK:[^\r\n]*(?:\r?\n)?"
     if not re.search(pattern, code):
         raise ValueError(f"Could not find '/// CHECK:' safety comment in code:\n{code}")
 
     mutated = re.sub(pattern, "", code, count=1)
+    if mutated == code:
+        raise ValueError(f"Failed to remove safety comment in code:\n{code}")
+
     lines = code.splitlines()
     line_no = 1
     for idx, line in enumerate(lines, start=1):
@@ -128,19 +144,24 @@ def mutate_math_unchecked_arith(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Replace checked/saturating arithmetic with raw arithmetic operator."""
-    sub_pattern = r"(\w+\.balance)\.checked_sub\((\w+)\)\.ok_or\([^)]+\)\?"
-    add_pattern = r"(\w+\.balance)\.checked_add\((\w+)\)\.ok_or\([^)]+\)\?"
+    sub_pattern = r"([\w.]+)\.checked_sub\(([^)]+)\)(?:\.ok_or\([^)]*\)\?|\.unwrap\(\))?"
+    add_pattern = r"([\w.]+)\.checked_add\(([^)]+)\)(?:\.ok_or\([^)]*\)\?|\.unwrap\(\))?"
+    mul_pattern = r"([\w.]+)\.checked_mul\(([^)]+)\)(?:\.ok_or\([^)]*\)\?|\.unwrap\(\))?"
+    div_pattern = r"([\w.]+)\.checked_div\(([^)]+)\)(?:\.ok_or\([^)]*\)\?|\.unwrap\(\))?"
 
     if re.search(sub_pattern, code):
         mutated = re.sub(sub_pattern, r"\1 - \2", code, count=1)
     elif re.search(add_pattern, code):
         mutated = re.sub(add_pattern, r"\1 + \2", code, count=1)
-    elif ".checked_sub(" in code:
-        mutated = re.sub(r"\.checked_sub\(([^)]+)\)\.unwrap\(\)", r" - \1", code, count=1)
-    elif ".checked_add(" in code:
-        mutated = re.sub(r"\.checked_add\(([^)]+)\)\.unwrap\(\)", r" + \1", code, count=1)
+    elif re.search(mul_pattern, code):
+        mutated = re.sub(mul_pattern, r"\1 * \2", code, count=1)
+    elif re.search(div_pattern, code):
+        mutated = re.sub(div_pattern, r"\1 / \2", code, count=1)
     else:
         raise ValueError(f"Could not find checked arithmetic pattern in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate checked arithmetic in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
@@ -167,16 +188,17 @@ def mutate_anchor_pda_seeds(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Remove bump validation or replace with hardcoded bump in PDA seeds constraint."""
-    if "bump = account.bump" in code:
-        mutated = code.replace("bump = account.bump", "bump = 254", 1)
-    elif "bump = vault.bump" in code:
-        mutated = code.replace("bump = vault.bump", "bump = 254", 1)
-    elif ", bump" in code:
-        mutated = code.replace(", bump", "", 1)
-    elif "bump," in code:
-        mutated = code.replace("bump,", "", 1)
+    if re.search(r"bump\s*=\s*[\w.]+", code):
+        mutated = re.sub(r"bump\s*=\s*[\w.]+", "bump = 254", code, count=1)
+    elif re.search(r",\s*bump\b", code):
+        mutated = re.sub(r",\s*bump\b", "", code, count=1)
+    elif re.search(r"\bbump\s*,", code):
+        mutated = re.sub(r"\bbump\s*,", "", code, count=1)
     else:
         raise ValueError(f"Could not find bump validation in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate PDA bump in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
@@ -203,15 +225,24 @@ def mutate_anchor_invoke_signed(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Remove bump seed slice or empty seed slice from invoke_signed CPI call."""
-    if "invoke_signed(" in code:
+    if "invoke_signed" not in code:
+        raise ValueError(f"Could not find invoke_signed in code:\n{code}")
+
+    seeds_pattern = r"(invoke_signed\s*\(\s*[^,]+,\s*[^,]+,\s*)&\[.*?\]\s*\)"
+    if re.search(seeds_pattern, code, flags=re.DOTALL):
+        mutated = re.sub(seeds_pattern, r"\1&[])", code, count=1, flags=re.DOTALL)
+    elif re.search(r"invoke_signed\s*\([^;)]+\)", code):
         mutated = re.sub(
-            r"invoke_signed\s*\([^;]+\);?",
-            "invoke_signed(&ix, &accounts, &[])?;",
+            r"invoke_signed\s*\([^;)]+\)",
+            "invoke_signed(&ix, &accounts, &[])",
             code,
             count=1,
         )
     else:
-        raise ValueError(f"Could not find invoke_signed in code:\n{code}")
+        raise ValueError(f"Could not parse invoke_signed call in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate invoke_signed in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
@@ -238,18 +269,14 @@ def mutate_anchor_realloc_close(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Remove realloc::payer and realloc::zero from account constraint."""
-    if "realloc = 500" in code:
-        mutated = code.replace(
-            "realloc = 500, realloc::payer = payer, realloc::zero = true",
-            "realloc = 500",
-            1,
-        )
-    elif "realloc::payer" in code:
-        mutated = re.sub(r",?\s*realloc::payer\s*=\s*\w+", "", code, count=1)
-    elif "realloc::zero" in code:
-        mutated = re.sub(r",?\s*realloc::zero\s*=\s*\w+", "", code, count=1)
-    else:
-        raise ValueError(f"Could not find realloc parameters in code:\n{code}")
+    mutated = code
+    if "realloc::payer" in code:
+        mutated = re.sub(r",?\s*realloc::payer\s*=\s*[\w.]+", "", mutated, count=1)
+    if "realloc::zero" in mutated:
+        mutated = re.sub(r",?\s*realloc::zero\s*=\s*[\w.]+", "", mutated, count=1)
+
+    if mutated == code:
+        raise ValueError(f"Could not find realloc::payer or realloc::zero in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
@@ -276,7 +303,7 @@ def mutate_anchor_unverified_cpi(
     code: str, file_path: str = "programs/vault/src/lib.rs"
 ) -> MutationResult:
     """Replace Program<'info, Token> with untyped AccountInfo<'info>."""
-    pattern = r"pub\s+(token_program|system_program)\s*:\s*Program<'info,\s*\w+>"
+    pattern = r"pub\s+(\w+)\s*:\s*Program<'info,\s*[\w<>]+>"
     match = re.search(pattern, code)
     if not match:
         raise ValueError(f"Could not find Program<'info, ...> in code:\n{code}")
@@ -310,25 +337,90 @@ def mutate_anchor_unverified_cpi(
     )
 
 
+def mutate_anchor_remaining_accounts(
+    code: str, file_path: str = "programs/vault/src/lib.rs"
+) -> MutationResult:
+    """Inject unchecked iteration over remaining accounts or remove signer check."""
+    if "require!(ctx.remaining_accounts.is_empty()" in code:
+        replacement = (
+            "for acc in ctx.remaining_accounts.iter() {\n"
+            "        transfer_lamports(acc, 1000)?;\n"
+            "    }"
+        )
+        mutated = code.replace(
+            "require!(ctx.remaining_accounts.is_empty(), ErrorCode::Empty);",
+            replacement,
+            1,
+        )
+    elif "require!(acc.is_signer" in code:
+        mutated = re.sub(r"\s*require!\s*\(\s*\w+\.is_signer[^;]*\);\r?\n?", "\n", code, count=1)
+        mutated = mutated.replace(
+            "ctx.remaining_accounts.iter()", "ctx.remaining_accounts.iter() /* unchecked */", 1
+        )
+    elif "require_keys_eq!" in code:
+        mutated = re.sub(r"\s*require_keys_eq!\s*\([^;]*\);\r?\n?", "\n", code, count=1)
+        mutated = mutated.replace(
+            "ctx.remaining_accounts.iter()", "ctx.remaining_accounts.iter() /* unchecked */", 1
+        )
+    elif "remaining_accounts" in code:
+        mutated = re.sub(r"\s*if\s+!\w+\.is_signer\s*\{[^}]*\}\r?\n?", "\n", code, count=1)
+        mutated = mutated.replace(
+            "ctx.remaining_accounts.iter()", "ctx.remaining_accounts.iter() /* unchecked */", 1
+        )
+    else:
+        raise ValueError(f"Could not find remaining_accounts validation in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate remaining_accounts validation in code:\n{code}")
+
+    lines = code.splitlines()
+    line_no = 1
+    for idx, line in enumerate(lines, start=1):
+        if "remaining_accounts" in line or "transfer_lamports" in line:
+            line_no = idx
+            break
+
+    diff = create_git_diff(file_path, code, mutated)
+    return MutationResult(
+        mutation_id="mut_anchor_remaining_accounts",
+        concept_id="anchor.remaining_accounts",
+        rule_id="anchor.remaining_accounts",
+        description="Removed signer/owner validation from remaining accounts iteration",
+        file_path=file_path,
+        original_code=code,
+        mutated_code=mutated,
+        diff=diff,
+        line_number=line_no,
+    )
+
+
 # --- TypeScript / Wallet Mutators ---
 
 
 def mutate_ts_base_units(code: str, file_path: str = "src/wallet/transfer.ts") -> MutationResult:
     """Omit decimal scaling in token transfer instruction call."""
-    pattern = r"amount\s*\*\s*10\s*\*\*\s*decimals"
+    pattern = (
+        r"([\w.]+)\s*\*\s*"
+        r"(?:10\s*\*\*\s*[\w.]+|\(?\s*10\s*\*\*\s*[\w.]+\s*\)?|Math\.pow\s*\(\s*10\s*,\s*[\w.]+\s*\))"
+    )
+    bigint_pattern = r"BigInt\s*\(\s*Math\.floor\s*\(\s*([\w.]+)\s*\*\s*[^)]+\)\s*\)"
+
     if re.search(pattern, code):
-        mutated = re.sub(pattern, "amount", code, count=1)
-    elif "* 10 ** decimals" in code:
-        mutated = code.replace(" * 10 ** decimals", "", 1)
-    elif "BigInt(Math.floor(amount * (10 ** decimals)))" in code:
-        mutated = code.replace("BigInt(Math.floor(amount * (10 ** decimals)))", "BigInt(amount)", 1)
+        mutated = re.sub(pattern, r"\1", code, count=1)
+    elif re.search(bigint_pattern, code):
+        mutated = re.sub(bigint_pattern, r"BigInt(\1)", code, count=1)
+    elif "* 10 **" in code:
+        mutated = re.sub(r"\s*\*\s*10\s*\*\*\s*[\w.]+", "", code, count=1)
     else:
         raise ValueError(f"Could not find decimal scaling in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate decimal scaling in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
     for idx, line in enumerate(lines, start=1):
-        if "createTransferInstruction" in line or "amount" in line:
+        if "createTransferInstruction" in line or "amount" in line or "decimals" in line:
             line_no = idx
             break
 
@@ -348,20 +440,23 @@ def mutate_ts_base_units(code: str, file_path: str = "src/wallet/transfer.ts") -
 
 def mutate_ts_lamport_units(code: str, file_path: str = "src/wallet/balance.ts") -> MutationResult:
     """Mix SOL UI units with lamports or perform float division on lamports."""
-    if "fee * LAMPORTS_PER_SOL" in code:
-        mutated = code.replace("Math.floor(balance - (fee * LAMPORTS_PER_SOL))", "balance - 0.5", 1)
-    elif "solAmount * LAMPORTS_PER_SOL" in code:
-        mutated = code.replace("solAmount * LAMPORTS_PER_SOL", "solAmount", 1)
-    elif "balanceLamports + (solAmount * LAMPORTS_PER_SOL)" in code:
-        mutated = code.replace(
-            "balanceLamports + (solAmount * LAMPORTS_PER_SOL)",
-            "balanceLamports + solAmount",
-            1,
-        )
-    elif "const half = lamports / 2n;" in code:
-        mutated = code.replace("const half = lamports / 2n;", "const half = lamports / 2.0;", 1)
+    floor_pattern = r"Math\.floor\s*\(\s*([\w.]+)\s*-\s*\(([\w.]+)\s*\*\s*LAMPORTS_PER_SOL\)\s*\)"
+    mult_pattern = r"([\w.]+)\s*\*\s*LAMPORTS_PER_SOL"
+    div_pattern = r"([\w.]+)\s*\/\s*(\d+)n"
+
+    if re.search(floor_pattern, code):
+        mutated = re.sub(floor_pattern, r"\1 - 0.5", code, count=1)
+    elif re.search(mult_pattern, code):
+        mutated = re.sub(mult_pattern, r"\1", code, count=1)
+    elif re.search(div_pattern, code):
+        mutated = re.sub(div_pattern, r"\1 / \2.0", code, count=1)
+    elif "/ 2n" in code:
+        mutated = code.replace("/ 2n", "/ 2.0", 1)
     else:
         raise ValueError(f"Could not find lamport scaling pattern in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate lamport scaling in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
@@ -388,27 +483,38 @@ def mutate_ts_address_validation(
     code: str, file_path: str = "src/wallet/address.ts"
 ) -> MutationResult:
     """Remove try/catch around new PublicKey(userInput) or substitute naive length check."""
-    if "PublicKey.isOnCurve(" in code:
-        mutated = re.sub(r"PublicKey\.isOnCurve\([^)]+\)", "recipient.length === 44", code, count=1)
-    elif "try {" in code:
-        pattern = (
-            r"\s*try\s*\{\s*const\s+pubkey\s*=\s*new\s+PublicKey\(([^)]+)\);\s*"
-            r"return\s+connection\.getAccountInfo\(pubkey\);\s*\}\s*catch[^{]*\{[^}]*\}"
+    curve_match = re.search(r"PublicKey\.isOnCurve\((\w+)\)", code)
+    if curve_match:
+        var_name = curve_match.group(1)
+        target_id = (
+            var_name
+            if var_name in ("address", "pubkey", "recipient", "wallet")
+            else ("address" if "address" in var_name else "recipient")
         )
-        replacement = (
-            r"\n    const pubkey = new PublicKey(\1);\n"
-            r"    return connection.getAccountInfo(pubkey);"
+        mutated = code
+        if target_id != var_name and f"{var_name}:" in code:
+            mutated = mutated.replace(f"{var_name}:", f"{target_id}:", 1)
+        mutated = re.sub(
+            rf"PublicKey\.isOnCurve\({re.escape(var_name)}\)",
+            f"{target_id}.length === 44",
+            mutated,
+            count=1,
         )
-        mutated = re.sub(pattern, replacement, code, count=1)
+    elif "try {" in code and "new PublicKey" in code:
+        pattern = r"\s*try\s*\{\s*([\s\S]*?)\s*\}\s*catch[^{]*\{[^}]*\}"
+        mutated = re.sub(pattern, r"\n    \1", code, count=1)
     elif "PublicKey(" in code:
-        mutated = code.replace("validatePubkey(input)", "new PublicKey(input)", 1)
+        mutated = re.sub(r"validatePubkey\(([^)]+)\)", r"new PublicKey(\1)", code, count=1)
     else:
         raise ValueError(f"Could not find PublicKey try/catch or curve validation in code:\n{code}")
+
+    if mutated == code:
+        raise ValueError(f"Failed to mutate address validation in code:\n{code}")
 
     lines = code.splitlines()
     line_no = 1
     for idx, line in enumerate(lines, start=1):
-        if "PublicKey" in line or "recipient" in line:
+        if "PublicKey" in line or "length === 44" in line or "address" in line:
             line_no = idx
             break
 
@@ -428,24 +534,28 @@ def mutate_ts_address_validation(
 
 def mutate_ts_hardcoded_rpc(code: str, file_path: str = "src/services/rpc.ts") -> MutationResult:
     """Inject hardcoded production mainnet RPC URL into connection constructor."""
-    pattern = (
-        r"const\s+endpoint\s*=\s*process\.env\.SOLANA_RPC_URL\s*\|\|\s*clusterApiUrl\([^)]+\);"
-    )
-    replacement = 'const endpoint = "https://api.mainnet-beta.solana.com";'
+    pattern = r"(const|let|var)\s+(\w+)\s*=\s*(?:process\.env\.[\w_]+|clusterApiUrl\([^)]+\))[^;]*;"
+    replacement = r'\1 \2 = "https://api.mainnet-beta.solana.com";'
 
     if re.search(pattern, code):
         mutated = re.sub(pattern, replacement, code, count=1)
-    elif "process.env.SOLANA_RPC_URL" in code:
-        mutated = code.replace(
-            "process.env.SOLANA_RPC_URL", '"https://api.mainnet-beta.solana.com"', 1
+    elif "process.env." in code:
+        mutated = re.sub(
+            r"process\.env\.[\w_]+",
+            '"https://api.mainnet-beta.solana.com"',
+            code,
+            count=1,
         )
     else:
         raise ValueError(f"Could not find dynamic RPC endpoint in code:\n{code}")
 
+    if mutated == code:
+        raise ValueError(f"Failed to mutate RPC endpoint in code:\n{code}")
+
     lines = code.splitlines()
     line_no = 1
     for idx, line in enumerate(lines, start=1):
-        if "endpoint" in line or "RPC" in line:
+        if "endpoint" in line or "RPC" in line or "api.mainnet" in line:
             line_no = idx
             break
 
@@ -522,6 +632,15 @@ BENIGN_ANCHOR_SNIPPETS = {
         "    pub payer: Signer<'info>,\n"
         "}\n"
     ),
+    "remaining_accounts_safe": (
+        "pub fn batch_transfer(ctx: Context<BatchTransfer>) -> Result<()> {\n"
+        "    for acc in ctx.remaining_accounts.iter() {\n"
+        "        require!(acc.is_signer, ErrorCode::Unauthorized);\n"
+        "        transfer_lamports(acc, 1000)?;\n"
+        "    }\n"
+        "    Ok(())\n"
+        "}\n"
+    ),
 }
 
 BENIGN_TS_SNIPPETS = {
@@ -539,8 +658,8 @@ BENIGN_TS_SNIPPETS = {
         "}\n"
     ),
     "address_safe": (
-        "export function validateAddress(addressStr: string): boolean {\n"
-        "    return PublicKey.isOnCurve(addressStr);\n"
+        "export function validateAddress(address: string): boolean {\n"
+        "    return PublicKey.isOnCurve(address);\n"
         "}\n"
     ),
     "rpc_config": (
@@ -563,6 +682,7 @@ class MutationGenerator:
         "anchor.invoke_signed": mutate_anchor_invoke_signed,
         "anchor.realloc_close": mutate_anchor_realloc_close,
         "anchor.unverified_cpi": mutate_anchor_unverified_cpi,
+        "anchor.remaining_accounts": mutate_anchor_remaining_accounts,
         "ts.base_units": mutate_ts_base_units,
         "ts.lamport_units": mutate_ts_lamport_units,
         "ts.address_validation": mutate_ts_address_validation,
@@ -573,18 +693,83 @@ class MutationGenerator:
         """List registered mutation rule keys."""
         return list(self._MUTATOR_REGISTRY.keys())
 
+    def _mutate_unified_diff(
+        self,
+        diff_text: str,
+        mutation_key: str,
+        mutator: Callable[[str, str], MutationResult],
+        file_path: str,
+    ) -> MutationResult:
+        """Mutate a unified diff in place by mutating the added lines."""
+        m_file = re.search(r"^\+\+\+\s+b/([^\r\n]+)", diff_text, flags=re.MULTILINE)
+        actual_path = m_file.group(1).strip() if m_file else file_path
+
+        lines = diff_text.splitlines()
+        added_lines = [
+            (idx, line[1:])
+            for idx, line in enumerate(lines)
+            if line.startswith("+") and not line.startswith("+++")
+        ]
+
+        added_text = "\n".join(text for _, text in added_lines)
+        if not added_text.strip():
+            # If no added lines in diff, mutate the context lines
+            context_lines = [
+                (idx, line[1:] if line.startswith(" ") else line)
+                for idx, line in enumerate(lines)
+                if not line.startswith(("diff --git", "index", "---", "+++", "@@"))
+            ]
+            added_text = "\n".join(text for _, text in context_lines)
+
+        if not added_text.strip():
+            raise ValueError(f"No mutatable code lines found in diff:\n{diff_text}")
+
+        mut_res = mutator(added_text, actual_path)
+
+        mut_lines = mut_res.mutated_code.splitlines()
+        new_lines: list[str] = []
+        replaced = False
+        added_idx_set = {idx for idx, _ in added_lines}
+
+        for idx, line in enumerate(lines):
+            if idx in added_idx_set:
+                if not replaced:
+                    for m_line in mut_lines:
+                        new_lines.append(f"+{m_line}")
+                    replaced = True
+            else:
+                new_lines.append(line)
+
+        mutated_diff = "\n".join(new_lines) + "\n"
+        return MutationResult(
+            mutation_id=mut_res.mutation_id,
+            concept_id=mut_res.concept_id,
+            rule_id=mut_res.rule_id,
+            description=mut_res.description,
+            file_path=actual_path,
+            original_code=added_text,
+            mutated_code=mut_res.mutated_code,
+            diff=mutated_diff,
+            line_number=mut_res.line_number,
+        )
+
     def mutate(
         self,
         code: str,
         mutation_key: str,
         file_path: str = "programs/vault/src/lib.rs",
     ) -> MutationResult:
-        """Apply a registered mutator to a code snippet."""
+        """Apply a registered mutator to a code snippet or unified diff."""
         if mutation_key not in self._MUTATOR_REGISTRY:
             raise KeyError(
                 f"Unknown mutation key '{mutation_key}'. Available: {self.available_mutations()}"
             )
         mutator = self._MUTATOR_REGISTRY[mutation_key]
+
+        # If code is already a unified git diff, mutate the diff in place
+        if code.startswith("diff --git") or "--- a/" in code:
+            return self._mutate_unified_diff(code, mutation_key, mutator, file_path)
+
         return mutator(code, file_path)
 
     def generate_all_mutations(self) -> list[MutationResult]:
@@ -639,6 +824,13 @@ class MutationGenerator:
                 BENIGN_ANCHOR_SNIPPETS["cpi_typed_program"],
                 "anchor.unverified_cpi",
                 "programs/transfer/src/lib.rs",
+            )
+        )
+        results.append(
+            self.mutate(
+                BENIGN_ANCHOR_SNIPPETS["remaining_accounts_safe"],
+                "anchor.remaining_accounts",
+                "programs/vault/src/lib.rs",
             )
         )
 

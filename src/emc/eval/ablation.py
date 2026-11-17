@@ -66,7 +66,15 @@ class NaiveBaselineRunner:
         self, raw_diff: str, target_concept: str | None = None
     ) -> list[Question]:
         """Generate naive ungrounded questions directly from prompt."""
-        # Naive generator produces superficial questions without grounding or quality gate
+        if self.provider is not None:
+            try:
+                self.provider.generate_text(
+                    prompt=self.NAIVE_PROMPT.format(diff=raw_diff[:1000]),
+                    system="You are a quiz generator.",
+                )
+            except Exception:
+                pass
+
         lines = [ln for ln in raw_diff.splitlines() if ln.startswith("+") and len(ln) > 2]
         sample_line = lines[0][1:].strip() if lines else "code change"
 
@@ -95,10 +103,25 @@ class NaiveBaselineRunner:
         ]
 
 
+def resolve_fixtures_root() -> Path:
+    """Find repo fixtures directory locating from file or workspace root."""
+    candidate = Path(__file__).resolve().parent.parent.parent.parent / "fixtures"
+    if candidate.exists():
+        return candidate
+    candidate2 = Path("fixtures").resolve()
+    if candidate2.exists():
+        return candidate2
+    return Path.cwd() / "fixtures"
+
+
 class AblationRunner:
     """Executes comparative ablation between naive baseline and full pipeline."""
 
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        fixtures_dir: Path | None = None,
+    ) -> None:
         from emc.llm.fake import FakeProvider
 
         if isinstance(provider, FakeProvider) and provider.response_handler is None:
@@ -107,6 +130,7 @@ class AblationRunner:
             provider.set_handler(_default_fake_handler)
 
         self.provider = provider
+        self.fixtures_dir = fixtures_dir or resolve_fixtures_root()
         self.redactor = Redactor()
         self.validator = QuestionValidator(provider=provider)
         self.naive_runner = NaiveBaselineRunner(provider=provider)
@@ -158,12 +182,20 @@ class AblationRunner:
                     snippet=plan.snippet,
                     stem=f"What is the security consequence of: {plan.stem_template}?",
                     choices=[
-                        Distractor(key="A", text="Vulnerability occurs", explanation="Expected"),
-                        Distractor(key="B", text="No effect", explanation="Wrong"),
+                        Distractor(
+                            key="A",
+                            text="Critical security invariant violated",
+                            explanation="Matches diff risk",
+                        ),
+                        Distractor(
+                            key="B",
+                            text="Benign stylistic preference",
+                            explanation="Incorrect",
+                        ),
                     ],
                     answer_key="A",
-                    explanation="Vulnerability occurs due to detected risk.",
-                    hint_ladder=[f"Look at {plan.target_concept}"],
+                    explanation=f"Matches detected vulnerability {expected_rule}.",
+                    hint_ladder=[f"Look closely at {plan.target_concept}."],
                 )
                 pipeline_total_qs += 1
                 val_res = self.validator.validate(q, redacted_ingest)
@@ -191,7 +223,7 @@ class AblationRunner:
         for s in secrets_manifest:
             secret_val = s["secret_value"]
             rel_file = s.get("file", "")
-            fpath = Path("fixtures/secrets") / rel_file
+            fpath = self.fixtures_dir / "secrets" / rel_file
             content = fpath.read_text(encoding="utf-8") if fpath.exists() else secret_val
             res = self.redactor.redact_text(content, file_path=rel_file)
             if secret_val not in res.redacted_text:

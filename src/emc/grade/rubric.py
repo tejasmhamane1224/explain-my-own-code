@@ -338,7 +338,7 @@ def grade_rubric(
             resp = provider.generate_structured(
                 prompt=prompt,
                 schema=RubricEvaluationLLMOutput,
-                system_prompt=system_prompt,
+                system=system_prompt,
             )
             if resp.structured is not None:
                 llm_result = resp.structured

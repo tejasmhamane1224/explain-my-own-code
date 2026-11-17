@@ -1,15 +1,45 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "explain-my-own-code"
-version = "0.1.0"
-description = "Checks whether a developer actually understands a code diff, especially AI-generated code."
+version = "1.0.0"
+description = "Local-first developer safety CLI and git commit comprehension gate for AI-generated diffs"
 readme = "README.md"
-authors = [{ name = "explain-my-own-code contributors" }]
+authors = [
+    { name = "Tejas Mhamane", email = "tejas@mhamane.dev" }
+]
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+keywords = [
+    "solana",
+    "anchor",
+    "security",
+    "developer-tools",
+    "cli",
+    "git-hook",
+    "ai-safety",
+    "code-review",
+    "comprehension-gate",
+    "leitner-system",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
 dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
@@ -26,7 +56,17 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "setuptools>=61.0",
+    "wheel>=0.42.0",
+    "build>=1.1.0",
+    "twine>=5.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/tejasmhamane1224/explain-my-own-code"
+Documentation = "https://github.com/tejasmhamane1224/explain-my-own-code#readme"
+Repository = "https://github.com/tejasmhamane1224/explain-my-own-code"
+Issues = "https://github.com/tejasmhamane1224/explain-my-own-code/issues"
+Changelog = "https://github.com/tejasmhamane1224/explain-my-own-code/blob/main/CHANGELOG.md"
 
 [project.scripts]
 emc = "emc.cli:app"
@@ -34,16 +74,19 @@ emc = "emc.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+emc = ["concepts.yaml", "py.typed"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = []
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

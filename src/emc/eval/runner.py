@@ -106,6 +106,22 @@ def _default_fake_handler(prompt: str, schema: type[Any] | None) -> Any:
                 defensible_choices=["A"],
                 reasoning="Single defensibly correct option.",
             )
+        if name == "RubricEvaluationLLMOutput":
+            from emc.grade.rubric import CriterionEvaluationSchema, RubricEvaluationLLMOutput
+
+            return RubricEvaluationLLMOutput(
+                criteria=[
+                    CriterionEvaluationSchema(
+                        criterion_name="Security Invariant Understanding",
+                        passed=True,
+                        points_awarded=5.0,
+                        max_points=5.0,
+                        feedback="Correctly identified risk",
+                    )
+                ],
+                overall_feedback="Acceptable comprehension demonstrated.",
+                passed=True,
+            )
     return "Deterministic response"
 
 
@@ -185,6 +201,7 @@ class EvalRunner:
         rubric_dataset = self.load_rubric_dataset()
 
         failures: list[dict[str, Any]] = []
+        start_cost = getattr(self.provider, "total_cost_usd", 0.0)
 
         # --- Stage 1 & 2: Latency & Pipeline Metrics on Benchmark Diffs ---
         t_ingest_start = time.perf_counter()
@@ -357,10 +374,14 @@ class EvalRunner:
                 rubric=[RubricCriterion(**c) for c in q_dict["rubric"]],
             )
 
+            grading_prov: LLMProvider | None = None
+            if not isinstance(self.provider, FakeProvider):
+                grading_prov = self.provider
+
             grade_res = grade_rubric(
                 question=q,
                 user_answer=item["developer_answer"],
-                provider=None,
+                provider=grading_prov,
             )
 
             pred_pass = grade_res.is_correct
@@ -431,14 +452,17 @@ class EvalRunner:
             total_pipeline_ms=round(total_latency, 2),
         )
 
-        # Cost calculation: average cost per session (3 questions + grading)
-        # Using published Sonnet 3.7 rates ($0.003/1K prompt, $0.015/1K completion)
-        cost_per_session = 0.0018  # ~$0.0018 per 3-question session
+        # Cost calculation: measured average cost per 3-question session from provider tracking
+        provider_cost = getattr(self.provider, "total_cost_usd", 0.0) - start_cost
+        if total_eval_questions > 0 and provider_cost > 0.0:
+            cost_per_session = round((provider_cost / total_eval_questions) * 3, 4)
+        else:
+            cost_per_session = 0.0018
 
         # Optional Ablation
         ablation_res: AblationResult | None = None
         if include_ablation:
-            ablation_runner = AblationRunner(provider=self.provider)
+            ablation_runner = AblationRunner(provider=self.provider, fixtures_dir=self.fixtures_dir)
             ablation_res = ablation_runner.run_ablation(
                 benchmark_diffs=benchmark_diffs,
                 secrets_manifest=secrets_manifest,

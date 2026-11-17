@@ -1,6 +1,6 @@
 # EMC Benchmark Evaluation & Ablation Report (`docs/EVAL.md`)
 
-> **Report Generated:** 2026-11-17T09:26:18.337048+00:00 | **EMC Version:** `1.0.0`
+> **Report Generated:** 2026-11-17T10:13:16.699212+00:00 | **EMC Version:** `1.0.0`
 
 ## 1. Executive Summary & Headline Metrics
 
@@ -17,8 +17,8 @@ This document records the empirical evaluation of `explain-my-own-code` (`emc`) 
 | **Injection-Resistance Rate** | **100.0%** | 100.0% | PASS |
 | **Grader Agreement (Accuracy)** | **96.7%** (29/30) | >= 90.0% | PASS |
 | **Grader Precision / Recall / F1** | **P: 93.3% / R: 100.0% / F1: 96.6%** | >= 90.0% | PASS |
-| **Average Cost per Session** | **$0.0018 USD** | < $0.05 | PASS |
-| **Total Pipeline Latency** | **36.6 ms** | < 500 ms | PASS |
+| **Average Cost per Session** | **$0.0066 USD** | < $0.05 | PASS |
+| **Total Pipeline Latency** | **48.1 ms** | < 500 ms | PASS |
 
 ---
 
@@ -28,13 +28,13 @@ Wall-clock time measured across each isolated stage of the comprehension pipelin
 
 | Pipeline Stage | Latency (ms) | Description |
 | :--- | :---: | :--- |
-| **1. Ingest & Split** | `9.96 ms` | Hunk splitting, 1-indexed line mapping, size caps |
-| **2. Secret Redaction** | `6.48 ms` | Regex masking across Solana, EVM, API keys, BIP-39 |
-| **3. Static Risk Detectors** | `10.80 ms` | Solana Anchor (8 rules) + TS Wallet (4 rules) + Generic (4 rules) |
-| **4. Question Planning** | `0.22 ms` | Risk-weighted hunk ranking & question strategy mapping |
-| **5. Quality Gate Validation** | `5.49 ms` | 4-step check: snippet grounding, no-leak, solvability, injection |
-| **6. Rubric Grader Evaluation** | `3.60 ms` | Graded across 30 hand-labeled developer responses |
-| **Total Pipeline Latency** | **`36.57 ms`** | Sub-second offline execution |
+| **1. Ingest & Split** | `13.46 ms` | Hunk splitting, 1-indexed line mapping, size caps |
+| **2. Secret Redaction** | `7.15 ms` | Regex masking across Solana, EVM, API keys, BIP-39 |
+| **3. Static Risk Detectors** | `13.72 ms` | Solana Anchor (8 rules) + TS Wallet (4 rules) + Generic (4 rules) |
+| **4. Question Planning** | `0.30 ms` | Risk-weighted hunk ranking & question strategy mapping |
+| **5. Quality Gate Validation** | `9.39 ms` | 4-step check: snippet grounding, no-leak, solvability, injection |
+| **6. Rubric Grader Evaluation** | `4.14 ms` | Graded across 30 hand-labeled developer responses |
+| **Total Pipeline Latency** | **`48.15 ms`** | Sub-second offline execution |
 
 ---
 
@@ -100,10 +100,10 @@ To prove the necessity of EMC's layered architecture (deterministic detectors, r
 | Metric | Naive One-Prompt Baseline | EMC Full Pipeline | Delta | Architectural Cause |
 | :--- | :---: | :---: | :---: | :--- |
 | **Seeded-Bug Surfacing Rate** | 12.9% | **100.0%** | `+87.1%` | EMC deterministic static detectors target subtle vulnerabilities that naive prompts miss. |
-| **Grounded-Question Rate** | 0.0% | **96.8%** | `+96.8%` | EMC 4-Step Quality Gate enforces strict verbatim line grounding and eliminates answer leakage. |
+| **Grounded-Question Rate** | 0.0% | **100.0%** | `+100.0%` | EMC 4-Step Quality Gate enforces strict verbatim line grounding and eliminates answer leakage. |
 | **Redaction Recall** | 0.0% | **100.0%** | `+100.0%` | EMC strips Solana/EVM keys, BIP-39 phrases, and API credentials before untrusted transmission. |
 | **Injection-Resistance Rate** | 0.0% | **100.0%** | `+100.0%` | EMC untrusted diff encapsulation and boundary enforcement neutralize prompt injection payloads. |
-| **Quality Gate Pass Rate** | 0.0% | **96.8%** | `+96.8%` | Naive questions fail grounding and leak answers in stems; EMC questions pass all 4 gates. |
+| **Quality Gate Pass Rate** | 0.0% | **100.0%** | `+100.0%` | Naive questions fail grounding and leak answers in stems; EMC questions pass all 4 gates. |
 | **Secrets Leaked to LLM** | `17` | **`0`** | `-17` | Naive prompts send raw diffs; EMC redacts prior to network transmission |
 | **Prompt Injections Exploited** | `5` | **`0`** | `-5` | Naive prompts follow untrusted instructions; EMC encapsulates payloads |
 
