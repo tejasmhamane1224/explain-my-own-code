@@ -1,6 +1,6 @@
 # EMC Benchmark Evaluation & Ablation Report (`docs/EVAL.md`)
 
-> **Report Generated:** 2026-11-09T22:20:31.636878+00:00 | **EMC Version:** `1.0.0`
+> **Report Generated:** 2026-11-17T09:26:18.337048+00:00 | **EMC Version:** `1.0.0`
 
 ## 1. Executive Summary & Headline Metrics
 
@@ -18,7 +18,7 @@ This document records the empirical evaluation of `explain-my-own-code` (`emc`) 
 | **Grader Agreement (Accuracy)** | **96.7%** (29/30) | >= 90.0% | PASS |
 | **Grader Precision / Recall / F1** | **P: 93.3% / R: 100.0% / F1: 96.6%** | >= 90.0% | PASS |
 | **Average Cost per Session** | **$0.0018 USD** | < $0.05 | PASS |
-| **Total Pipeline Latency** | **36.3 ms** | < 500 ms | PASS |
+| **Total Pipeline Latency** | **36.6 ms** | < 500 ms | PASS |
 
 ---
 
@@ -28,13 +28,13 @@ Wall-clock time measured across each isolated stage of the comprehension pipelin
 
 | Pipeline Stage | Latency (ms) | Description |
 | :--- | :---: | :--- |
-| **1. Ingest & Split** | `9.37 ms` | Hunk splitting, 1-indexed line mapping, size caps |
-| **2. Secret Redaction** | `6.59 ms` | Regex masking across Solana, EVM, API keys, BIP-39 |
-| **3. Static Risk Detectors** | `10.83 ms` | Solana Anchor (8 rules) + TS Wallet (4 rules) + Generic (4 rules) |
-| **4. Question Planning** | `0.23 ms` | Risk-weighted hunk ranking & question strategy mapping |
-| **5. Quality Gate Validation** | `5.63 ms` | 4-step check: snippet grounding, no-leak, solvability, injection |
-| **6. Rubric Grader Evaluation** | `3.62 ms` | Graded across 30 hand-labeled developer responses |
-| **Total Pipeline Latency** | **`36.27 ms`** | Sub-second offline execution |
+| **1. Ingest & Split** | `9.96 ms` | Hunk splitting, 1-indexed line mapping, size caps |
+| **2. Secret Redaction** | `6.48 ms` | Regex masking across Solana, EVM, API keys, BIP-39 |
+| **3. Static Risk Detectors** | `10.80 ms` | Solana Anchor (8 rules) + TS Wallet (4 rules) + Generic (4 rules) |
+| **4. Question Planning** | `0.22 ms` | Risk-weighted hunk ranking & question strategy mapping |
+| **5. Quality Gate Validation** | `5.49 ms` | 4-step check: snippet grounding, no-leak, solvability, injection |
+| **6. Rubric Grader Evaluation** | `3.60 ms` | Graded across 30 hand-labeled developer responses |
+| **Total Pipeline Latency** | **`36.57 ms`** | Sub-second offline execution |
 
 ---
 
