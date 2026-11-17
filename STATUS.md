@@ -1,7 +1,7 @@
 # Project Status: explain-my-own-code (`emc`)
 
 ## Current Stage
-**Stage 8: Documentation & Security Hardening** -- **COMPLETED & VERIFIED**
+**Stage 9: Release Readiness** -- **COMPLETED & VERIFIED**
 
 ---
 
@@ -13,9 +13,9 @@
 - [x] **Stage 4: Session + Grading**: Interactive terminal quiz loop (Rich), progressive hint ladder with point penalties (-25% per hint), deterministic key/number/text/line matchers with disambiguation, LLM rubric judge for free-text explain-back questions with offline keyword fallback and prompt injection defenses, scriptable driver, non-interactive CI bypass, full CLI `emc quiz` integration with `--answers` and `--json` (219 passed tests).
 - [x] **Stage 5: Ledger + Mastery + Report/Review**: `.emc/ledger.jsonl` append-only storage, Leitner 5-box spaced repetition mastery tracker, automatic quiz session recording, Rich comprehension report tables & JSON export, targeted review replay engine with immediate box progression (243 passed tests).
 - [x] **Stage 6: Modes, Gate, Hooks, CI-Safe Behavior**: `.emc.toml` configuration, `off` / `warn` / `gate` modes, pre-commit and commit-msg hook installers, Comprehension trailers, CI / non-TTY bypass, foreign hook protection with backup/restore, git worktree support (273 passed tests).
-- [x] **Stage 7: Evaluation Suite (`emc eval`)**: 31 seeded diffs (21 Anchor, 10 TS), programmatic mutation generator, 30 hand-labeled free-text rubric dataset, ablation vs naive single-prompt baseline, automated evaluation runner and report generation directly to `docs/EVAL.md` (281 passed tests).
+- [x] **Stage 7: Evaluation Suite (`emc eval`)**: 31 seeded diffs (21 Anchor, 10 TS), programmatic mutation generator, 30 hand-labeled free-text rubric dataset, ablation vs naive single-prompt baseline, automated evaluation runner and report generation directly to `docs/EVAL.md` (282 passed tests).
 - [x] **Stage 8: Documentation & Security Hardening**: Comprehensive README with honest competitor matrix, threat model (`docs/THREAT_MODEL.md`), `SECURITY.md`, and `CONTRIBUTING.md`.
-- [ ] **Stage 9: Release Readiness**: Packaging dry-run (`pipx`), changelog, versioning, GitHub Actions CI matrix.
+- [x] **Stage 9: Release Readiness**: Semantic versioning (`1.0.0`), `CHANGELOG.md`, `dist/` sdist & wheel packaging dry-run, `twine check` validation, multi-OS & multi-Python GitHub Actions CI matrix, and automated release workflow (`.github/workflows/ci.yml`, `.github/workflows/release.yml`). Strictly no unauthorized external publishing.
 
 ---
 
@@ -279,11 +279,32 @@
 
 ---
 
+## Stage 9 Deliverables Summary
+1. **Semantic Versioning & Metadata**:
+   - Standardized `1.0.0` semantic versioning across `pyproject.toml` and `src/emc/__init__.py`.
+   - Comprehensive project URLs (Homepage, Documentation, Repository, Issues, Changelog).
+   - Python version compatibility declared (`>=3.11`, tested through 3.14).
+2. **Comprehensive Changelog (`CHANGELOG.md`)**:
+   - Authored in Keep a Changelog standard documenting all 9 stages, features, security defenses, and CLI commands.
+3. **Packaging Build & Dry-Run**:
+   - Built source distribution (`explain_my_own_code-1.0.0.tar.gz`) and binary wheel (`explain_my_own_code-1.0.0-py3-none-any.whl`).
+   - Verified that `emc/concepts.yaml` and `emc/py.typed` package data are packaged inside the wheel.
+   - Verified distributions pass `twine check` with zero warnings or errors.
+   - Re-installed wheel locally and verified `emc --version`, `emc --help`, and `emc doctor` run natively.
+   - **Zero external publishing**: No PyPI or external registries targeted without explicit user authorization.
+4. **CI/CD Automation Matrix (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)**:
+   - Added multi-platform test matrix: `ubuntu-latest`, `macos-latest`, `windows-latest`.
+   - Added multi-version Python test matrix: `3.11`, `3.12`, `3.13`, `3.14`.
+   - Automated packaging validation job in CI (`build` + `twine check`).
+   - Prepared tag-triggered release workflow (`v*.*.*`) with draft release creation.
+
+---
+
 ## Verification Commands
-To verify Stage 8 independently, run from the `explain-my-own-code` directory:
+To verify Stage 9 independently, run from the `explain-my-own-code` directory:
 
 ```bash
-# 1. Run complete unit and acceptance test suite (281 passing tests)
+# 1. Run complete unit and acceptance test suite (282 passing tests)
 pytest
 
 # 2. Check code formatting and linting
@@ -293,15 +314,18 @@ ruff format --check .
 # 3. Check static types
 mypy src tests
 
-# 4. Verify documentation files exist and are valid markdown
-test -f README.md
-test -f docs/THREAT_MODEL.md
-test -f SECURITY.md
-test -f CONTRIBUTING.md
+# 4. Build distribution artifacts (sdist and wheel)
+python -m build
 
-# 5. Run Stage 7 benchmark evaluation suite to verify report fidelity
-python -m emc.cli eval --ablation --output docs/EVAL.md
+# 5. Validate distributions with twine
+twine check dist/*
+
+# 6. Verify native CLI entrypoints
+emc --version
+emc --help
+emc doctor
 ```
+
 
 
 
