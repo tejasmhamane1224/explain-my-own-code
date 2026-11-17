@@ -5,19 +5,15 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:
-    fcntl = None  # type: ignore[assignment]
-
-try:
+if sys.platform == "win32":
     import msvcrt
-except ImportError:
-    msvcrt = None  # type: ignore[assignment]
+else:
+    import fcntl
 
 from pydantic import ValidationError
 
@@ -42,25 +38,25 @@ def _interprocess_lock(lock_path: Path) -> Iterator[None]:
         return
 
     try:
-        if fcntl is not None and hasattr(fcntl, "flock"):
-            try:
-                fcntl.flock(lock_file.fileno(), getattr(fcntl, "LOCK_EX", 2))
-            except OSError:
-                pass
-        elif msvcrt is not None:
+        if sys.platform == "win32":
             try:
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
             except OSError:
                 pass
+        else:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            except OSError:
+                pass
         yield
     finally:
         try:
-            if fcntl is not None and hasattr(fcntl, "flock"):
-                fcntl.flock(lock_file.fileno(), getattr(fcntl, "LOCK_UN", 8))
-            elif msvcrt is not None:
+            if sys.platform == "win32":
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         except OSError:
             pass
         finally:
