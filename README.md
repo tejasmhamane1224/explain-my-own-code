@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://pypi.org/project/explain-my-own-code/"><img src="https://img.shields.io/pypi/v/explain-my-own-code.svg?style=flat-square&color=blue" alt="PyPI version"></a>
   <a href="https://github.com/tejasmhamane1224/explain-my-own-code/actions"><img src="https://img.shields.io/badge/tests-282%20passing-brightgreen?style=flat-square" alt="282 tests passing"></a>
   <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12 | 3.13"></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/code%20style-ruff-000?style=flat-square" alt="Ruff"></a>
@@ -30,7 +31,7 @@ No LLM guesswork for detection. No secrets leaving your machine. No rubber-stamp
 ## 20-Second Install
 
 ```bash
-pipx install git+https://github.com/tejasmhamane1224/explain-my-own-code.git
+pipx install explain-my-own-code
 emc doctor        # verify install
 emc init           # create .emc.toml
 emc hook install   # wire up pre-commit gate
